@@ -51,7 +51,7 @@ class Hamiltonian:
 
 class HeisenbergHamiltonian(Hamiltonian):
 
-    def __init__(self, spins, dt=0.1, jx=1, jy=1, jz=1):
+    def __init__(self, spins, dt=0.1, jx=1, jy=1, jz=1, approx=False):
         dimensions = 2**spins
         super().__init__(dimensions, dt)
         self.n = spins
@@ -60,8 +60,11 @@ class HeisenbergHamiltonian(Hamiltonian):
         self.jz = jz
         self.js = {'x': jx, 'y': jy, 'z': jz}
         self.H = self.H_matrix()
-        self.U = self.U_matrix()
-        self.U_approx = self.U_matrix_approx()
+        if approx:
+            self.U = self.U_matrix_approx()
+        else:
+            self.U = self.U_matrix()
+        
 
     def H_matrix(self):
         H = -(1/2)*np.sum([

@@ -11,9 +11,9 @@ class Chain:
 
 class Chain1d(Chain):
 
-    def __init__(self, spins, dt=0.1, jx=1, jy=1, jz=1):
+    def __init__(self, spins, dt=0.1, jx=1, jy=1, jz=1, approx=False):
         super().__init__(spins)
-        self.hamiltonian = HeisenbergHamiltonian(spins, dt, jx, jy, jz)
+        self.hamiltonian = HeisenbergHamiltonian(spins, dt, jx, jy, jz, approx)
 
     def initialise(self, state):
         self.initial_state = state

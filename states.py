@@ -29,8 +29,28 @@ class Ket:
         plt.show()
 
     @staticmethod
-    def superposition_state(N):
-        return (1/np.sqrt(N))*np.array([1 for _ in range(N)])
+    def single_excitation_state(spins, excited_spin):
+        excited_state = tuple([1]+[0 for _ in range(1,spins)])
+        excited_states = [
+            state for state in itertools.permutations(excited_state,spins)
+        ]
+        state = np.array([
+            1 if state in excited_states and np.isclose((state.index(1)+1)/excited_spin, 1) else 0 
+            for state in itertools.product(range(2), repeat=spins)
+        ])
+        return state
+
+    @staticmethod
+    def superposition_state(spins, period):
+        excited_state = tuple([1]+[0 for _ in range(1,spins)])
+        excited_states = [
+            state for state in itertools.permutations(excited_state,spins)
+        ]
+        state = (1/np.sqrt(spins/period))*np.array([
+            1 if state in excited_states and np.isclose(state.index(1) % period, 0) else 0 
+            for state in itertools.product(range(2), repeat=spins)
+        ])
+        return state
 
     @staticmethod
     def fourier_state(N, k):
@@ -38,17 +58,14 @@ class Ket:
 
     @staticmethod
     def periodic_state(spins, period):
-        excitated_state = tuple([1]+[0 for _ in range(1,spins)])
-        excitated_states = [
-            state for state in itertools.permutations(excitated_state,spins)
-        ]
-        state = (1/np.sqrt(spins/period))*np.array([
-            1 if state in excitated_states and np.isclose(state.index(1) % period, 0) else 0 
+        periodic_state = tuple([1 if np.isclose(i % period, 0) else 0 for i in range(spins)])
+        state = np.array([
+            1 if state == periodic_state else 0 
             for state in itertools.product(range(2), repeat=spins)
         ])
         return state
 
-    
+
 class SuperpositionState(Ket):
 
     def __init__(self, spins):
@@ -73,3 +90,11 @@ class PeriodicState(Ket):
         if not self.excitations.is_integer():
             raise ValueError(f'Period ({period}) must be a factor of spins ({spins})!')
         self.ket = Ket.periodic_state(self.spins, self.period) 
+
+ 
+class SingleExcitationState(Ket):
+
+    def __init__(self, spins, excited_spin):
+        super().__init__(spins)
+        self.excited_spin = excited_spin
+        self.ket = Ket.single_excitation_state(spins, excited_spin)
