@@ -148,6 +148,7 @@ def fidelity_time(
         start_site=1,
         final_site=final_site,
         always_on=always_on,
+        dt=0.1,
     )
     qst_fidelity = chain.overlaps_evolution(final_state.subspace_ket, psi_states)
     peaks, _ = find_peaks(qst_fidelity, height=(0.2, 1.05))
@@ -215,7 +216,7 @@ def optimise_gamma(
 
 
 if __name__ == "__main__":
-    alpha = 1
+    alpha = 0.5
     protocol = "reverse_search"
     chain = "open"
     mid_n = False
@@ -236,9 +237,9 @@ if __name__ == "__main__":
     data = main(
         orig_data,
         alpha,
-        gamma_range=0.02,
-        gamma_steps=20,
-        time_range=2,
+        gamma_range=0.08,
+        gamma_steps=30,
+        time_range=12,
         time_steps=80,
         open_chain=open_chain,
         always_on=always_on,

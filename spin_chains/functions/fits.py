@@ -6,6 +6,10 @@ def inverse_power_fit(x, a, b, c):
     return (a / np.power(x, b)) + c
 
 
+def yukawa_inverse_power_fit(x, a, b, c, d):
+    return [(a * np.exp(-b * i) / np.power(i, c)) + d for i in x]
+
+
 def power_fit(x, a, b, c):
     return a * np.power(x, b) + c
 

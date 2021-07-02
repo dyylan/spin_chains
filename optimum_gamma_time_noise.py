@@ -179,9 +179,9 @@ def optimise_gamma(
     if always_on:
         evolution_times = [np.sqrt(spins)]
     else:
-        time_steps = 100
-        start_time = 75 * orig_time / 100
-        end_time = 110 * orig_time / 100
+        time_steps = 10
+        start_time = 95 * orig_time / 200
+        end_time = 100 * orig_time / 200
         delta_time = (end_time - start_time) / time_steps
         evolution_times = [
             start_time + (step * delta_time) for step in range(time_steps + 1)
@@ -210,11 +210,11 @@ def optimise_gamma(
 
 
 if __name__ == "__main__":
-    alpha = 1
-    protocol = "always_on_fast"
+    alpha = 0.5
+    protocol = "reverse_search"
     chain = "open"
     noise = 0.005
-    samples = 1000
+    samples = 100
     mid_n = False
     end_n = True
     n_factor = 0  # 0 turns of n_factor (not 1)

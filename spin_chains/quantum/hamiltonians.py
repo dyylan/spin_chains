@@ -4,12 +4,16 @@ import itertools
 import numpy.linalg
 import scipy.linalg
 import scipy.special
+import scipy.constants
+
+from .iontrap import IonTrap
 
 
 class Hamiltonian:
-    def __init__(self, dimensions, dt):
+    def __init__(self, dimensions, dt, hbar=False):
         self.dimensions = dimensions
-        self.dt = dt
+        self.hbar = hbar
+        self.dt = dt / scipy.constants.hbar if hbar else dt
 
     def initialise_evolution(self, subspace_evolution=False, samples=0):
         if samples:
@@ -62,12 +66,12 @@ class Hamiltonian:
         """Returns the s_q paramter of the Hamiltonian."""
 
         def summand(max_eigenvalue, eigenvalue, coef):
-            return coef / (np.power((largest_eigenvalue - eigenvalue), q))
+            return coef / (np.power((max_eigenvalue - eigenvalue), q))
 
         largest_eigenvalue = eigenvalues[0]
         n = len(eigenvalues)
 
-        if not open_chain:
+        if open_chain:
             if not eigenvectors.any():
                 raise ValueError(
                     f"If graph is not vertex transitive, the eigenvectors are required."
@@ -437,8 +441,9 @@ class LongRangeXYHamiltonian1d(Hamiltonian):
         interaction_distance_bound=0,
         noise=0,
         samples=0,
+        hbar=False,
     ):
-        super().__init__(spins, dt)
+        super().__init__(spins, dt, hbar)
         self.open_chain = open_chain
         self.sender_reciever_qubits = sender_reciever_qubits
         self.spins = spins
@@ -634,6 +639,75 @@ class LongRangeXYHamiltonian1d(Hamiltonian):
             )
         else:
             return scaling / ((np.abs(distance)) ** (self.alpha))
+
+
+class LongRangeXYHamiltonian1dExp(Hamiltonian):
+    def __init__(
+        self,
+        spins,
+        dt=0.000001,
+        mu=2 * np.pi * 6.01e6,
+        Omega=2 * np.pi * 1e6,
+        delta_k=2 * 2 * np.pi / 355e-9 * np.array([1, 0, 0]),
+        omega=2 * np.pi * np.array([6e6, 5e6, 0.5e6]),
+        use_optimal_omega=False,
+        t2=10e-3,
+        samples=0,
+        hbar=True,
+    ):
+        super().__init__(spins, dt, hbar)
+        self.spins = spins
+        self.mu = np.ones(1) * mu
+        self.Omega = np.ones((spins, 1)) * Omega
+        self.delta_k = delta_k
+        self.ion_trap = IonTrap(
+            spins,
+            mu,
+            omega,
+            Omega,
+            use_optimal_omega=use_optimal_omega,
+            calculate_alpha=True,
+        )
+        self.alpha = self.ion_trap.alpha
+
+        self.t2 = t2  # dephasing time
+        self.dephasing_rate = 1 / self.t2
+        self.samples = samples
+        if self.samples:
+            self.noise_arrays = []
+            self.H_noise = []
+            for sample in range(1, self.samples + 1, 1):
+                self.noise_arrays.append(
+                    np.random.normal(0, self.dephasing_rate, self.spins)
+                )
+                self.H_noise.append(self.H_matrix(sample))
+            self.H_noise_subspace = self.H_noise
+        self.H = self.H_matrix()
+        self.H_subspace = self.H
+
+    def H_matrix(self, sample=0):
+        H = self.ion_trap.Js
+        if sample:
+            for i in range(self.spins):
+                H[i, i] += self.noise_arrays[sample - 1][i]
+        return H
+
+    def rescale_hamiltonian(self, scale):
+        self.hamiltonian_scaling = scale
+        self.H = scale * self.H
+        self.H_subspace = self.H
+
+    def add_marked_site(self, spin, hz=1, gamma_rescale=False):
+        site = self.spins - spin
+        if gamma_rescale:
+            self.H = hz * self.H
+            self.H[(site, site)] = self.H[(site, site)] + 1
+        else:
+            self.H[(site, site)] = self.H[(site, site)] + hz
+        self.H_subspace = self.H
+
+    def update_marked_site(self, spin, hz=1, gamma_rescale=False):
+        self.add_marked_site(spin, hz, gamma_rescale)
 
 
 class LongRangeXYHamiltonian1dSubspace2(Hamiltonian):

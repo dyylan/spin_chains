@@ -146,6 +146,7 @@ def fidelity_time(
         start_site=1,
         final_site=final_site,
         always_on=always_on,
+        dt=0.1,
     )
     qst_fidelity = chain.overlaps_evolution(final_state.subspace_ket, psi_states)
     peaks, _ = find_peaks(qst_fidelity, height=(0.2, 1.05))
@@ -175,10 +176,10 @@ def optimise_gamma(
     if always_on:
         evolution_times = [np.sqrt(spins)]
     else:
-        time_steps = 100
+        time_steps = 10
         naive_time = (np.pi / 2) * np.sqrt(spins / np.sqrt(naive_fidelity))
-        start_time = 75 * naive_time / 100
-        end_time = 125 * naive_time / 100
+        start_time = 85 * naive_time / 100
+        end_time = 115 * naive_time / 100
         delta_time = (end_time - start_time) / time_steps
         evolution_times = [
             start_time + (step * delta_time) for step in range(time_steps + 1)
@@ -229,8 +230,8 @@ def approximate_gamma(spins, open_chain, alpha, dt=0.01):
 
 
 if __name__ == "__main__":
-    alpha = 1
-    protocol = "reverse_search"
+    alpha = 0.5
+    protocol = "always_on"
     chain = "open"
     mid_n = False
     end_n = True

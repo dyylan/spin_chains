@@ -1,5 +1,6 @@
 from numba import jit
 import numpy as np
+import scipy.constants
 import copy
 from .hamiltonians import (
     HeisenbergHamiltonian,
@@ -7,6 +8,7 @@ from .hamiltonians import (
     XYHamiltonian1dSubspace,
     HubbardHamiltonian2particles,
     LongRangeXYHamiltonian1d,
+    LongRangeXYHamiltonian1dExp,
 )
 from .states import FourierState
 
@@ -30,6 +32,7 @@ class Chain:
         raise NotImplementedError(f"Not implemented for this Chain.")
 
     def time_evolution(self, time, reset_state=True):
+        time = time / scipy.constants.hbar if self.hamiltonian.hbar else time
         if not self.initialised:
             raise ValueError(f"Must initilise the Chain before time evolution.")
         self.hamiltonian.initialise_evolution(self.subspace_evolution)
@@ -55,7 +58,7 @@ class Chain:
         while t < time:
             state_ket = np.matmul(unitary, ket)
             self.states.append(state_ket)
-            self.times.append(t + self.time)
+            self.times.append(self.time + t)
             self.state.update(state_ket)
             t += self.hamiltonian.dt
             ket = state_ket
@@ -281,6 +284,33 @@ class Chain1dSubspaceLongRange(Chain1dSubspace):
     def update_interaction_map(self, interaction_map, interaction_distance_bound=0):
         self.hamiltonian.update_interaction_map(
             interaction_map, interaction_distance_bound
+        )
+
+
+class Chain1dSubspaceLongRangeExp(Chain1dSubspace):
+    def __init__(
+        self,
+        spins,
+        dt=0.000001,
+        mu=2 * np.pi * 6.01e6,
+        Omega=2 * np.pi * 1e6,
+        delta_k=2 * 2 * np.pi / 355e-9 * np.array([1, 0, 0]),
+        omega=2 * np.pi * np.array([6e6, 5e6, 1e6]),
+        use_optimal_omega=False,
+        t2=10e-3,
+        hbar=False,
+    ):
+        super().__init__(spins)
+        self.hamiltonian = LongRangeXYHamiltonian1dExp(
+            spins,
+            dt=dt,
+            mu=mu,
+            Omega=Omega,
+            delta_k=delta_k,
+            omega=omega,
+            use_optimal_omega=use_optimal_omega,
+            t2=10e-3,
+            hbar=hbar,
         )
 
 

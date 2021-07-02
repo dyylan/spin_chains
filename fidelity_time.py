@@ -27,6 +27,7 @@ from spin_chains.plots.plots import (
     plot_fidelity,
     plot_time,
     plot_time_comparisons,
+    plot_always_on_time_comparison,
 )
 from spin_chains.functions.fits import power_fit
 from spin_chains.data_analysis.data_handling import update_data, read_data
@@ -65,10 +66,14 @@ def quantum_communication(
 
     if always_on and long_time:
         chain.add_marked_site(start_site, marked_strength, gamma_rescale=True)
-        # switch_time = (spins ** 0.7) * switch_time * ((gamma_ratio / 2) ** 2)
-        # switch_time = (spins ** 0.6) * switch_time * ((gamma_ratio / 2))
-        # switch_time = (spins ** 0.5) * switch_time * ((gamma_ratio / 2))
-        switch_time = (spins ** 0.4) * switch_time * ((gamma_ratio / 2))
+        if alpha == 0.8:
+            switch_time = (spins ** 0.6) * switch_time * ((gamma_ratio / 2))
+        elif alpha == 0.5:
+            switch_time = (spins ** 0.5) * switch_time * ((gamma_ratio / 2))
+        elif alpha == 0.3:
+            switch_time = (spins ** 0.4) * switch_time * ((gamma_ratio / 2))
+        else:
+            switch_time = (spins ** 0.7) * switch_time * ((gamma_ratio / 2) ** 2)
     else:
         chain.add_marked_site(start_site, marked_strength, gamma_rescale=True)
     chain.initialise(init_state)
@@ -330,6 +335,9 @@ def compute_fidelity(hamiltonian, n, t1, t2, delta_n, w, f):
 
 if __name__ == "__main__":
     alpha = 0.1
+
+    alpha1 = 0.5
+    alpha2 = 0.8
     spins = [40 * x for x in range(8, 26)]
     # spins = [400, 600, 800]
 
@@ -340,12 +348,12 @@ if __name__ == "__main__":
         ao_slow_analytical_fidelities,
         ao_slow_asymptotic_fidelities,
         ao_slow_fidelities,
-        ao_slow_times,
+        ao_slow_times1,
         ao_slow_analytical_times,
         ao_slow_switch_times,
     ) = fidelity_time(
         spins,
-        alpha,
+        alpha1,
         open_chain=True,
         always_on=True,
         long_time=True,
@@ -359,18 +367,18 @@ if __name__ == "__main__":
     )
 
     (
-        ao_slow_3_optimum_gammas,
-        ao_slow_3_gammas,
-        ao_slow_3_naive_fidelities,
-        ao_slow_3_analytical_fidelities,
-        ao_slow_3_asymptotic_fidelities,
-        ao_slow_3_fidelities,
-        ao_slow_3_times,
-        ao_slow_3_analytical_times,
-        ao_slow_3_switch_times,
+        ao_slow_optimum_gammas,
+        ao_slow_gammas,
+        ao_slow_naive_fidelities,
+        ao_slow_analytical_fidelities,
+        ao_slow_asymptotic_fidelities,
+        ao_slow_fidelities,
+        ao_slow_times2,
+        ao_slow_analytical_times,
+        ao_slow_switch_times,
     ) = fidelity_time(
         spins,
-        alpha,
+        alpha2,
         open_chain=True,
         always_on=True,
         long_time=True,
@@ -378,10 +386,35 @@ if __name__ == "__main__":
         correction=False,
         dt=10,
         calculate_analytical=False,
-        gamma_ratio=3,
+        gamma_ratio=2,
         find_switch_time=False,
         plot=False,
     )
+
+    # (
+    #     ao_slow_3_optimum_gammas,
+    #     ao_slow_3_gammas,
+    #     ao_slow_3_naive_fidelities,
+    #     ao_slow_3_analytical_fidelities,
+    #     ao_slow_3_asymptotic_fidelities,
+    #     ao_slow_3_fidelities,
+    #     ao_slow_3_times,
+    #     ao_slow_3_analytical_times,
+    #     ao_slow_3_switch_times,
+    # ) = fidelity_time(
+    #     spins,
+    #     alpha,
+    #     open_chain=True,
+    #     always_on=True,
+    #     long_time=True,
+    #     time_error=False,
+    #     correction=False,
+    #     dt=10,
+    #     calculate_analytical=False,
+    #     gamma_ratio=3,
+    #     find_switch_time=False,
+    #     plot=False,
+    # )
 
     (
         ao_fast_optimum_gammas,
@@ -390,12 +423,36 @@ if __name__ == "__main__":
         ao_fast_analytical_fidelities,
         ao_fast_asymptotic_fidelities,
         ao_fast_fidelities,
-        ao_fast_times,
+        ao_fast_times1,
         ao_fast_analytical_times,
         ao_fast_switch_times,
     ) = fidelity_time(
         spins,
-        alpha,
+        alpha1,
+        open_chain=True,
+        always_on=True,
+        long_time=False,
+        time_error=False,
+        correction=False,
+        dt=0.1,
+        calculate_analytical=False,
+        gamma_ratio=1,
+        find_switch_time=False,
+        plot=False,
+    )
+    (
+        ao_fast_optimum_gammas,
+        ao_fast_gammas,
+        ao_fast_naive_fidelities,
+        ao_fast_analytical_fidelities,
+        ao_fast_asymptotic_fidelities,
+        ao_fast_fidelities,
+        ao_fast_times2,
+        ao_fast_analytical_times,
+        ao_fast_switch_times,
+    ) = fidelity_time(
+        spins,
+        alpha2,
         open_chain=True,
         always_on=True,
         long_time=False,
@@ -475,4 +532,13 @@ if __name__ == "__main__":
     # plot_time(spins, ao_analytical_times, ao_times)
     # plot_time(spins, rs_analytical_times, rs_times)
 
-    plot_always_on_time(alpha, spins, ao_fast_times, ao_slow_times, ao_slow_3_times)
+    # plot_always_on_time(alpha, spins, ao_fast_times, ao_slow_times, ao_slow_3_times)
+    plot_always_on_time_comparison(
+        alpha1,
+        alpha2,
+        spins,
+        ao_fast_times1,
+        ao_slow_times1,
+        ao_fast_times2,
+        ao_slow_times2,
+    )

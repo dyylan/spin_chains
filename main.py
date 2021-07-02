@@ -4,6 +4,7 @@ from spin_chains.quantum.chains import (
     Chain1dSubspace2particles,
     Chain1dSubspaceLongRange,
     Chain1dLongRange,
+    Chain1dSubspaceLongRangeExp,
 )
 from spin_chains.quantum.states import (
     PeriodicState,
@@ -15,6 +16,9 @@ from spin_chains.quantum.states import (
     SpecifiedState,
     TwoParticleHubbbardState,
 )
+from spin_chains.quantum.hamiltonians import Hamiltonian
+from spin_chains.functions.couplings_calculations import mu_for_specific_alpha_BO
+
 import numpy as np
 
 np.set_printoptions(threshold=np.inf)
@@ -2126,6 +2130,72 @@ def non_superposition_spatial_search_k_states(
     plt.show()
 
 
+def spatial_search_experimental_parameters(
+    spins, marked_strength, time, dt=0.000001, mu=2 * np.pi * 6.01e6, gamma_rescale=True
+):
+    init_state = SuperpositionState(
+        spins=spins, subspace=1, period=1, offset=0, single_subspace=True
+    )
+    # init_state = SingleState(spins, 1, single_subspace=True)
+
+    single_states = [
+        SingleState(spins, j + 1, single_subspace=True) for j in range(spins)
+    ]
+
+    chain = Chain1dSubspaceLongRangeExp(spins=spins, dt=dt, mu=mu)
+
+    if not gamma_rescale:
+        marked_strength = 1 / marked_strength
+    chain.add_marked_site(1, marked_strength, gamma_rescale=gamma_rescale)
+
+    chain.initialise(init_state, subspace_evolution=True)
+    times, states = chain.time_evolution(time=time)
+
+    # print(chain.hamiltonian.H_subspace)
+
+    overlaps = []
+    for j, state in enumerate(single_states):
+        overlaps.append(chain.overlaps_evolution(state.subspace_ket, states))
+        print(f"Computed overlaps for excitation state {j+1}")
+
+    fig, ax = plt.subplots()
+    for y in overlaps:
+        ax.plot(times, y)
+    ax.legend([f"j = {j+1}" for j in range(spins)])
+    ax.set(xlabel="$Time~(s/\hbar)$")
+    ax.grid()
+    plt.show()
+
+
+def compute_approximate_gamma_and_mu(target_alpha, spins):
+    Omega = np.ones((spins, 1)) * 2 * np.pi * 1e6  # rabi frequency
+    delta_k = 2 * 2 * np.pi / 355e-9 * np.array([1, 0, 0])  # wave vector difference
+    mu_bounds = [np.ones(1) * 2 * np.pi * 6.005e6, np.ones(1) * 2 * np.pi * 6.08e6]
+    steps = 10
+    mu, alpha, Js = mu_for_specific_alpha_BO(
+        target_alpha, mu_bounds, steps, spins, Omega, delta_k
+    )
+    print(f"mu start = {mu_bounds[0]}, mu end = {mu_bounds[1]}")
+
+    # print(f"Js = {Js}")
+    eigenvectors, eigenvalues = Hamiltonian.spectrum(Js)
+    s_1 = Hamiltonian.s_parameter(
+        eigenvalues, 1, open_chain=True, eigenvectors=eigenvectors
+    )
+    s_2 = Hamiltonian.s_parameter(
+        eigenvalues, 2, open_chain=True, eigenvectors=eigenvectors
+    )
+    gamma = s_1
+    fidelity = s_1 ** 2 / s_2
+    time = (np.pi / 2) * np.sqrt(spins / fidelity)
+    print(f"approx gamma = {s_1}")
+    print(f"approx fidelity = {fidelity}")
+    print(f"approx time = {time}")
+    print(f"approx mu = {mu} for alpha = {alpha}")
+
+    return gamma, time, mu
+
+
 def neel_state_intitialisation(spins=8, time=100, dt=0.1, open_chain=True):
     subspace_size = int(scipy.special.comb(spins, spins / 2))
 
@@ -2436,16 +2506,16 @@ if __name__ == "__main__":
     #     open_chain=True,
     #     dt=0.1,
     # )
-    quantum_communication_always_on(
-        64,
-        0.13827174390681074 / 8,
-        8000000000,
-        alpha=5,
-        start_site=1,
-        final_site=64,
-        open_chain=True,
-        dt=10000,
-    )
+    # quantum_communication_always_on(
+    #     64,
+    #     0.13827174390681074 / 8,
+    #     8000000000,
+    #     alpha=5,
+    #     start_site=1,
+    #     final_site=64,
+    #     open_chain=True,
+    #     dt=10000,
+    # )
     # quantum_communication_always_on(
     #     224,
     #     0.10089519781285404,
@@ -2691,3 +2761,25 @@ if __name__ == "__main__":
     #     open_chain=False,
     #     dt=0.01,
     # )
+
+    spins = 31
+    approx_gamma, approx_time, mu = compute_approximate_gamma_and_mu(
+        target_alpha=0.5, spins=spins
+    )
+
+    spatial_search_experimental_parameters(
+        spins=spins,
+        marked_strength=approx_gamma,
+        mu=mu,
+        time=approx_time * 2,
+        dt=0.01,
+    )
+
+    spatial_search_experimental_parameters(
+        spins=spins,
+        marked_strength=approx_gamma,
+        mu=mu,
+        time=approx_time * 2 * approx_gamma,
+        dt=1e-8,
+        gamma_rescale=False,
+    )

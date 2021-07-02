@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
 from scipy.optimize import curve_fit
 from ..functions.fits import power_fit, sqrt_power_fit
 
@@ -143,6 +144,160 @@ def plot_always_on_time(alpha, spins, times_fast, times_slow, times_3_slow):
     plt.yticks(fontsize=fontsize_ticks)
     plt.savefig(
         f"plots/alpha={alpha}/plot_ao_time_scaling_comparisons.pdf",
+        bbox_inches="tight",
+    )
+    plt.show()
+
+
+def plot_always_on_time_comparison(
+    alpha1, alpha2, spins, times_fast1, times_slow1, times_fast2, times_slow2
+):
+
+    fast_popt1, fast_pcov1 = curve_fit(
+        sqrt_power_fit, spins, times_fast1, bounds=(0, [10.0, 0.1])
+    )
+    print(
+        f"Fit for fast time with alpha = {alpha1}: y = {fast_popt1[0]} * x^0.5 + {fast_popt1[1]}"
+    )
+
+    fast_popt2, fast_pcov2 = curve_fit(
+        sqrt_power_fit, spins, times_fast2, bounds=(0, [10.0, 0.1])
+    )
+    print(
+        f"Fit for fast time with alpha = {alpha2}: y = {fast_popt2[0]} * x^0.5 + {fast_popt2[1]}"
+    )
+
+    slow_popt1, slow_pcov1 = curve_fit(
+        power_fit, spins, times_slow1, bounds=(0, [10.0, 2, 0.1])
+    )
+    print(
+        f"Fit for slow time with alpha = {alpha1}: y = {slow_popt1[0]} * x^{slow_popt1[1]}+ {slow_popt1[2]}"
+    )
+
+    slow_popt2, slow_pcov2 = curve_fit(
+        power_fit, spins, times_slow2, bounds=(0, [10.0, 2, 0.1])
+    )
+    print(
+        f"Fit for slow time with alpha = {alpha2}: y = {slow_popt2[0]} * x^{slow_popt2[1]} + {slow_popt2[2]}"
+    )
+
+    times_fast_1_fit = power_fit(spins, fast_popt1[0], 0.5, 0)
+    times_fast_2_fit = power_fit(spins, fast_popt2[0], 0.5, 0)
+
+    times_slow_1_fit = power_fit(spins, slow_popt1[0], slow_popt1[1], 0)
+    times_slow_2_fit = power_fit(spins, slow_popt2[0], slow_popt2[1], 0)
+
+    ys = [
+        times_fast1,
+        times_fast_1_fit,
+        times_slow1,
+        times_slow_1_fit,
+        times_fast2,
+        times_fast_2_fit,
+        times_slow2,
+        times_slow_2_fit,
+    ]
+
+    fig, ax = plt.subplots(figsize=figure_size)
+    linestyles = [
+        "solid",
+        "dotted",
+        "solid",
+        "dotted",
+        "solid",
+        "dotted",
+        "solid",
+        "dotted",
+    ]
+    markers = ["x", "", "x", "", "D", "", "D", ""]
+    colours = [
+        "b",
+        "b",
+        "g",
+        "g",
+        "b",
+        "b",
+        "g",
+        "g",
+    ]
+    for i, y in enumerate(ys):
+        ax.plot(spins, y, linestyle=linestyles[i], color=colours[i], marker=markers[i])
+
+    marker_line_1 = mlines.Line2D(
+        [], [], color="black", marker=markers[0], label=f"$\\alpha = ${alpha1}"
+    )
+    marker_line_2 = mlines.Line2D(
+        [], [], color="black", marker=markers[4], label=f"$\\alpha = ${alpha2}"
+    )
+
+    legend0 = plt.legend(
+        handles=[marker_line_1, marker_line_2],
+        bbox_to_anchor=(1, 0.76),
+        fontsize=fontsize_legend,
+    )
+    ax.add_artist(legend0)
+
+    dotted_line_1 = mlines.Line2D(
+        [],
+        [],
+        color=colours[0],
+        linestyle=linestyles[1],
+        marker=markers[0],
+        label=f"fit: ${fast_popt1[0]:.2f}n^{{0.5}}$",
+    )
+    dotted_line_2 = mlines.Line2D(
+        [],
+        [],
+        color=colours[0],
+        linestyle=linestyles[1],
+        marker=markers[4],
+        label=f"fit: ${fast_popt2[0]:.2f}n^{{0.5}}$",
+    )
+    dotted_line_3 = mlines.Line2D(
+        [],
+        [],
+        color=colours[2],
+        linestyle=linestyles[1],
+        marker=markers[0],
+        label=f"fit: ${slow_popt1[0]:.2f}n^{{ {slow_popt1[1]:.2f} }}$",
+    )
+    dotted_line_4 = mlines.Line2D(
+        [],
+        [],
+        color=colours[2],
+        linestyle=linestyles[1],
+        marker=markers[4],
+        label=f"fit: ${slow_popt2[0]:.2f}n^{{ {slow_popt2[1]:.2f} }}$",
+    )
+
+    # legend1 = plt.legend(handles=[solid_line, dotted_line, x_marker], loc=3, fontsize=fontsize_legend)
+    legend1 = plt.legend(
+        handles=[dotted_line_1, dotted_line_2, dotted_line_3, dotted_line_4],
+        bbox_to_anchor=(1, 0.50),
+        fontsize=fontsize_legend,
+    )
+    ax.add_artist(legend1)
+
+    patches = []
+    patch1 = mpatches.Patch(color=colours[0], label=f"Optimum $\\gamma$")
+    patch2 = mpatches.Patch(color=colours[2], label=f"$\\gamma / 2$")
+    patches.append(patch1)
+    patches.append(patch2)
+    legend2 = plt.legend(
+        handles=patches, bbox_to_anchor=(1, 0.63), fontsize=fontsize_legend
+    )
+    ax.add_artist(legend2)
+
+    ax.set_xlabel(xlabel="$n$", fontsize=fontsize_axis)
+    ax.set_ylabel(ylabel="Time", fontsize=fontsize_axis)
+
+    ax.grid()
+    ax.set(xscale="log")
+    ax.set(yscale="log")
+    plt.xticks(fontsize=fontsize_ticks)
+    plt.yticks(fontsize=fontsize_ticks)
+    plt.savefig(
+        f"plots/plot_ao_time_scaling_comparisons_multi_alpha.pdf",
         bbox_inches="tight",
     )
     plt.show()

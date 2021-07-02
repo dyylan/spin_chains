@@ -21,3 +21,12 @@ def read_data(protocol, chain, alpha, save_tag):
     filepath = f"data/{protocol}_protocol/{chain}_chain/alpha={alpha}/{save_tag}.csv"
     df = pd.read_csv(filepath, index_col=False)
     return df.to_dict("list")
+
+
+def read_data_spin(protocol, chain, alpha, save_tag, spins):
+    filepath = f"data/{protocol}_protocol/{chain}_chain/alpha={alpha}/{save_tag}.csv"
+    df = pd.read_csv(filepath, index_col="spins")
+    df_row = df.loc[spins]
+    print(df_row)
+    print(df_row.to_dict())
+    return df_row.to_dict()
