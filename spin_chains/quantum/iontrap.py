@@ -35,12 +35,13 @@ class IonTrap:
         use_optimal_omega=False,
         calculate_alpha=False,
     ):
+        self.laser_stability_limit = 1000  # in Hz
         self.l = 1e-6  # length scale
         self.m = ion_mass  # mass of the ion
         self.n_ions = n_ions
         self.mu = mu
         self.Omega = (
-            Omega if isinstance(Omega, list) else np.ones((n_ions, 1)) * Omega
+            Omega if isinstance(Omega, list) else np.ones((n_ions, 1)) * Omega / n_ions
         )  # rabi frequency
         self.delta_k = (
             2 * 2 * np.pi / 355e-9 * np.array([1, 0, 0])
@@ -48,7 +49,7 @@ class IonTrap:
         if use_optimal_omega:
             # z_trap = 0.75 * (2 * np.log(n_ions) * 6e6) / (3 * n_ions)
             self.omega = 2 * np.pi * np.array([6e6, 5e6, 1e6])
-            self.optimise_z_trap_frequency(initial_z=0.8, z_step=0.01, verbosity=True)
+            self.optimise_z_trap_frequency(initial_z=0.8, z_step=0.005, verbosity=True)
         else:
             self.omega = omega  # x, y and z trap frequencies
             self.calculate_Js()
@@ -65,6 +66,24 @@ class IonTrap:
         self.Js = self._spin_interaction_graph()
         # print("Calculated Js")
         return self.Js
+
+    def calculate_minimum_mu(self, verbosity=True):
+        eta = np.einsum(
+            "ikm,k,m->im",
+            self.eigenmodes,
+            self.delta_k,
+            np.sqrt(IonTrap.hbar / (2 * self.m * self.eigenfrequencies)),
+        )
+        delta = self.eigenfrequencies - self.omega.max()
+        index = np.argmin(abs(delta))  # eigenfrequency of the highest trap mode
+        mu_min_minus = abs(
+            (3 * eta[0][index] * self.Omega[0]) - self.eigenfrequencies[index]
+        )
+        mu_min_plus = (3 * eta[0][index] * self.Omega[0]) + self.eigenfrequencies[index]
+        mu_min = mu_min_minus if mu_min_minus > mu_min_plus else mu_min_plus
+        if verbosity:
+            print(f"Calculated minimum mu = {mu_min[0]}")
+        return mu_min
 
     # Returns the alpha value from a specific mu
     def calculate_alpha(self, x=0, verbosity=True):
@@ -147,7 +166,7 @@ class IonTrap:
         )
 
         max_iter = steps
-        max_time = 180
+        max_time = 300
         optimisation.run_optimization(max_iter, max_time, verbosity=verbosity)
 
         mu = optimisation.x_opt
@@ -262,7 +281,6 @@ class IonTrap:
             self.delta_k,
             np.sqrt(IonTrap.hbar / (2 * self.m * self.eigenfrequencies)),
         )
-
         zeta = np.einsum("im,in->imn", self.Omega, eta)
         Js = np.einsum(
             "ij,imn,jmn,n,mn->ij",

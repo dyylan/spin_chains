@@ -197,6 +197,24 @@ class Ket:
         )
         return state
 
+    @staticmethod
+    def n_particle_hubbard_state(spins, excitations, sites=[], state=[]):
+        if state:
+            states = [
+                np.array(state)
+                for state in itertools.product(range(excitations + 1), repeat=spins)
+                if np.sum(state) == excitations
+            ]
+            state = np.array(
+                [1 if state == s else 0 for s in states],
+                dtype=np.complex128,
+            )
+        else:
+            state = np.zeros(spins)
+            for site in sites:
+                state[site - 1] += 1
+        return state
+
 
 class SuperpositionState(Ket):
     def __init__(self, spins, subspace=1, period=1, offset=0, single_subspace=False):
@@ -331,4 +349,28 @@ class TwoParticleHubbbardState(Ket):
             state[locs[0]] += 1
             state[locs[1]] += 1
             states.append("".join([str(i) for i in state]))
+        return states
+
+
+class NParticleHubbbardState(Ket):
+    def __init__(self, spins, excitations, state, state_array=False):
+        super().__init__(spins)
+        self.subspace = 2
+        self.subspace_only = True
+        self.excitations = excitations
+        if state_array:
+            self.subspace_ket = np.array(state_array, dtype=np.complex128)
+        else:
+            self.subspace_ket = Ket.n_particle_hubbard_state(
+                self.spins, self.excitations, state
+            )
+
+    def state_labels_subspace(self):
+        states = [
+            "".join([str(i) for i in state])
+            for state in itertools.product(
+                range(self.excitations + 1), repeat=self.spins
+            )
+            if np.sum(state) == self.excitations
+        ]
         return states

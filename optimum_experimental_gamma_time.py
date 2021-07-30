@@ -22,8 +22,8 @@ plt.rc("font", **font)
 
 def main(
     spins_list,
-    alpha,
-    gamma_range,
+    target_alpha,
+    gamma_range_factor,
     gamma_steps,
     open_chain,
     always_on,
@@ -32,9 +32,12 @@ def main(
     n_factor=0,
     n_diff=0,
     gamma_rescale=False,
+    mu_lower_bound=np.ones(1) * 2 * np.pi * 6.0000005e6,
+    use_existing_mu=None,
 ):
     data = {
         "spins": spins_list,
+        "minimum_mu": [],
         "mu": [],
         "alpha": [],
         "z_trap_frequency": [],
@@ -47,27 +50,51 @@ def main(
         "time": [],
         "switch_time": [],
     }
-
     for spins in spins_list:
-        ion_trap = iontrap.IonTrap(spins, use_optimal_omega=True)
-        omega = ion_trap.omega
-        # ion_trap.plot_spin_interactions()
+        if use_existing_mu:
+            data_orig = data_handling.read_data_spin(
+                "experimental/always_on_fast",
+                "open",
+                target_alpha,
+                use_existing_mu,
+                spins,
+            )
+            omega, mu_lower_bound, mu, alpha, approx_gamma, naive_fidelity = (
+                np.array(
+                    [2 * np.pi * 6e6, 2 * np.pi * 5e6, data_orig["z_trap_frequency"]]
+                ),
+                np.ones(1) * data_orig["minimum_mu"],
+                np.ones(1) * data_orig["mu"],
+                data_orig["alpha"],
+                data_orig["analytical_gamma"],
+                data_orig["naive_fidelity"],
+            )
+            z_trap_frequency = data_orig["z_trap_frequency"]
+            approx_gamma = 1 / approx_gamma
+        else:
+            ion_trap = iontrap.IonTrap(spins, use_optimal_omega=True)
+            omega = ion_trap.omega
+            z_trap_frequency = ion_trap.omega[2]
+            mu_lower_bound = ion_trap.calculate_minimum_mu()
+            # ion_trap.plot_spin_interactions()
 
-        # mu_bounds = [array([37730527.76961342]), array([38076102.96150829])]
-        mu_bounds = [
-            np.ones(1) * 2 * np.pi * 6.0000005e6,
-            np.ones(1) * 2 * np.pi * 6.25e6,
+            # mu_bounds = [array([37730527.76961342]), array([38076102.96150829])]
+            mu_bounds = [
+                mu_lower_bound,
+                # np.ones(1) * 37725148.80194278,  # For high N only
+                np.ones(1) * 2 * np.pi * 6.25e6,
+            ]
+            steps = gamma_steps
+
+            mu, alpha, _ = ion_trap.update_mu_for_target_alpha(
+                target_alpha, mu_bounds, steps
+            )
+            approx_gamma, naive_fidelity = approximate_gamma(ion_trap.Js)
+
+        gamma_range = [
+            approx_gamma * gamma_range_factor,
+            approx_gamma / gamma_range_factor,
         ]
-        steps = 120
-
-        mu, alpha, _ = ion_trap.update_mu_for_target_alpha(
-            target_alpha, mu_bounds, steps
-        )
-        # ion_trap.plot_spin_interactions()
-        # ion_trap.plot_ion_chain_positions()
-
-        approx_gamma, naive_fidelity = approximate_gamma(ion_trap.Js)
-        gamma_range = [approx_gamma * 1.4, approx_gamma / 1.4]
         (
             optimum_gamma,
             fidelity,
@@ -91,9 +118,10 @@ def main(
             n_diff,
             gamma_rescale,
         )
+        data["minimum_mu"].append(mu_lower_bound[0])
         data["mu"].append(mu[0])
         data["alpha"].append(alpha)
-        data["z_trap_frequency"].append(ion_trap.omega[2])
+        data["z_trap_frequency"].append(z_trap_frequency)
         data["analytical_gamma"].append(1 / approx_gamma)
         data["start_gamma"].append(start_gamma)
         data["end_gamma"].append(end_gamma)
@@ -106,6 +134,7 @@ def main(
             f"---- Computed\n\tfidelity = {fidelity} (naive fidelity = {naive_fidelity})"
             f"\n\ttime = {time}"
             f"\n\toptimum gamma = {optimum_gamma} (approx_gamma = {1/approx_gamma})"
+            f"\n\tmu = {mu[0]} (minimum_mu = {mu_lower_bound[0]})"
             f"\n\tfor {spins} dimensions (up to {spins_list[-1]})"
         )
     return data
@@ -136,9 +165,9 @@ def quantum_communication(
 
     if always_on:
         if open_chain:
-            switch_time = 2.5 * switch_time
+            switch_time = 1.5 * switch_time
         else:
-            switch_time = 2.5 * switch_time
+            switch_time = 1.5 * switch_time
         chain.update_marked_site(final_site, update_strength)
     else:
         chain.time_evolution(time=switch_time)
@@ -178,7 +207,7 @@ def fidelity_time(
         else:
             final_site = spins // 2
 
-    dt = 0.1 if gamma_rescale else 1e-8
+    dt = 0.1 if gamma_rescale else 1e-7
     times, psi_states, final_state, chain = quantum_communication(
         spins,
         gamma,
@@ -335,7 +364,7 @@ def optimise_gamma_BO(
     )
 
     max_iter = steps
-    max_time = 240
+    max_time = 300
     optimisation.run_optimization(max_iter, max_time, verbosity=True)
 
     optimum_gamma = optimisation.x_opt[0]
@@ -384,11 +413,11 @@ def plot_states(times, states):
 
 
 if __name__ == "__main__":
-    target_alpha = 0.5
+    target_alpha = 0.4
     protocol = "always_on_fast"
     chain = "open"
-    mid_n = False
-    end_n = True
+    mid_n = True
+    end_n = False
     n_factor = 0  # 0 turns off n_factor (not 1)
     n_diff = 0
     save_tag = "optimum_gammas"
@@ -397,18 +426,20 @@ if __name__ == "__main__":
     save_tag += "_end_n" if end_n else ""
     save_tag += f"_n_over_{n_factor}" if n_factor else ""
     save_tag += f"_n_minus_{n_diff}" if n_diff else ""
+    # save_tag += f"_mu_stability=1kHz"
+    save_tag += f"_mu_min"
     always_on = True if protocol == "always_on_fast" else False
     open_chain = True if chain == "open" else False
 
-    spins_list = [x for x in range(12, 124, 4)]
+    # spins_list = [x for x in range(4, 124, 4)]
     # spins_list = [x for x in range(12, 40, 4)]
-    spins_list = [x for x in range(4, 54, 2)]
+    spins_list = [x for x in range(4, 52, 2)]
 
     data = main(
         spins_list,
         target_alpha,
-        gamma_range=1000000,
-        gamma_steps=180,
+        gamma_range_factor=1.4,
+        gamma_steps=60,
         open_chain=open_chain,
         always_on=always_on,
         mid_n=mid_n,
@@ -416,6 +447,8 @@ if __name__ == "__main__":
         n_factor=n_factor,
         n_diff=n_diff,
         gamma_rescale=False,
+        # mu_lower_bound=np.ones(1) * 2 * np.pi * 6.001e6,\
+        use_existing_mu="optimum_gammas_end_n_mu_min",
     )
 
     protocol = "experimental/" + protocol

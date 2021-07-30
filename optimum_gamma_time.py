@@ -7,6 +7,7 @@ from spin_chains.data_analysis import data_handling
 
 from numba import jit
 import numpy as np
+import GPyOpt
 
 import scipy.special
 from scipy.signal import find_peaks
@@ -42,7 +43,7 @@ def main(
     }
     for spins in spins_list:
         approx_gamma, naive_fidelity = approximate_gamma(spins, open_chain, alpha)
-        optimum_gamma, fidelity, time, start_gamma, end_gamma = optimise_gamma(
+        optimum_gamma, fidelity, time, start_gamma, end_gamma = optimise_gamma_BO(
             spins,
             alpha,
             naive_fidelity,
@@ -98,7 +99,7 @@ def quantum_communication(
 
     if always_on:
         if open_chain:
-            switch_time = 4 * switch_time
+            switch_time = 1.5 * switch_time
         else:
             switch_time = 1.5 * switch_time
         chain.update_marked_site(final_site, 1)
@@ -146,7 +147,7 @@ def fidelity_time(
         start_site=1,
         final_site=final_site,
         always_on=always_on,
-        dt=0.1,
+        dt=0.01,
     )
     qst_fidelity = chain.overlaps_evolution(final_state.subspace_ket, psi_states)
     peaks, _ = find_peaks(qst_fidelity, height=(0.2, 1.05))
@@ -212,6 +213,90 @@ def optimise_gamma(
     return optimum_gamma, fidelity, time, start_gamma, end_gamma
 
 
+def optimise_gamma_BO(
+    spins,
+    alpha,
+    naive_fidelity,
+    gamma,
+    gamma_range,
+    gamma_steps,
+    open_chain,
+    always_on,
+    mid_n,
+    end_n,
+    n_factor,
+    n_diff,
+):
+    if always_on:
+        evolution_times = [np.pi * np.sqrt(spins / 2)]
+    else:
+        time_steps = 10
+        naive_time = (np.pi / 2) * np.sqrt(spins / np.sqrt(naive_fidelity))
+        start_time = 85 * naive_time / 100
+        end_time = 115 * naive_time / 100
+        delta_time = (end_time - start_time) / time_steps
+        evolution_times = [
+            start_time + (step * delta_time) for step in range(time_steps + 1)
+        ]
+    gamma_delta = gamma_range / gamma_steps
+    start_gamma = gamma - (gamma_range / 2)
+    end_gamma = gamma - (gamma_range / 2) + (gamma_steps * gamma_delta)
+
+    bounds = [
+        {
+            "name": "gamma",
+            "type": "continuous",
+            "domain": (start_gamma, end_gamma),
+        }
+    ]
+
+    def cost(params):
+        parameters = params.tolist()
+        gamma_trial = parameters[0]
+        _fidelity, _time = fidelity_time(
+            spins,
+            alpha,
+            gamma_trial,
+            evolution_times[0],
+            open_chain,
+            always_on,
+            mid_n,
+            end_n,
+            n_factor,
+            n_diff,
+        )
+        return 1 - _fidelity
+
+    optimisation = GPyOpt.methods.BayesianOptimization(
+        cost,
+        domain=bounds,
+        model_type="GP",
+        acquisition_type="EI",
+        normalize_Y=True,
+        acquisition_weight=2,
+        maximize=False,
+    )
+
+    max_iter = gamma_steps
+    max_time = 300
+    optimisation.run_optimization(max_iter, max_time, verbosity=True)
+
+    optimum_gamma = optimisation.x_opt[0]
+    fidelity, time = fidelity_time(
+        spins,
+        alpha,
+        optimum_gamma,
+        evolution_times[0],
+        open_chain,
+        always_on,
+        mid_n,
+        end_n,
+        n_factor,
+        n_diff,
+    )
+    return optimum_gamma, fidelity, time, start_gamma, end_gamma
+
+
 def approximate_gamma(spins, open_chain, alpha, dt=0.01):
     open_chain_for_s = chains.Chain1dSubspaceLongRange(
         spins=spins, dt=dt, alpha=alpha, open_chain=open_chain
@@ -230,8 +315,8 @@ def approximate_gamma(spins, open_chain, alpha, dt=0.01):
 
 
 if __name__ == "__main__":
-    alpha = 0.5
-    protocol = "always_on"
+    alpha = 0.3
+    protocol = "always_on_fast"
     chain = "open"
     mid_n = False
     end_n = True
@@ -246,12 +331,12 @@ if __name__ == "__main__":
     always_on = True if protocol == "always_on_fast" else False
     open_chain = True if chain == "open" else False
 
-    spins_list = [x for x in range(12, 124, 4)]
+    spins_list = [x for x in range(4, 22, 2)]
     data = main(
         spins_list,
         alpha,
-        gamma_range=0.08,
-        gamma_steps=30,
+        gamma_range=0.05,
+        gamma_steps=80,
         open_chain=open_chain,
         always_on=always_on,
         mid_n=mid_n,

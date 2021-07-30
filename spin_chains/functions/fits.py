@@ -22,5 +22,5 @@ def one_over_log(x, a):
     return a / np.log(x)
 
 
-def log(x, a):
+def log(x, a, b):
     return a + (b * np.log(x))

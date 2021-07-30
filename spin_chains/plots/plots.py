@@ -45,6 +45,38 @@ def plot_fidelity(
     plt.show()
 
 
+def plot_noisy_fidelity(
+    spins,
+    fidelities,
+    fidelities_lower_error,
+    fidelities_upper_error,
+):
+    ys = [
+        fidelities,
+    ]
+    fig, ax = plt.subplots(figsize=[8, 8])
+    linestyles = ["solid", "dashed", "dashed", "dashed"]
+    for i, y in enumerate(ys):
+        ax.plot(spins, y, linestyle=linestyles[i])
+    ax.fill_between(
+        spins,
+        fidelities_lower_error,
+        fidelities_upper_error,
+        facecolor="green",
+        alpha=0.5,
+    )
+    ax.legend(
+        [
+            "Fidelity",
+        ],
+        loc=4,
+    )
+    ax.set(xlabel="$n$")
+    ax.grid()
+    plt.yticks([0.75, 0.80, 0.85, 0.90, 0.95, 1.0])
+    plt.show()
+
+
 def plot_time(spins, analytical_times, times):
     ys = [times, analytical_times]
     fig, ax = plt.subplots()

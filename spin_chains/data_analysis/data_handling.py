@@ -9,6 +9,8 @@ def update_data(protocol, chain, alpha, save_tag, data_dict, replace=True):
         df = df.append(new_df)
         if replace:
             df = df.drop_duplicates(subset="spins", keep="last")
+            # df.spins = df.spins.astype(float)
+            df = df.sort_values(by=["spins"])
         else:
             df = df.drop_duplicates(subset="spins", keep="first")
     except FileNotFoundError:

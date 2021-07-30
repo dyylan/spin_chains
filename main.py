@@ -2,6 +2,8 @@ from spin_chains.quantum.chains import (
     Chain1d,
     Chain1dSubspace,
     Chain1dSubspace2particles,
+    Chain1dSubspaceNparticles,
+    Chain1dSubspace2LongRange,
     Chain1dSubspaceLongRange,
     Chain1dLongRange,
     Chain1dSubspaceLongRangeExp,
@@ -15,11 +17,14 @@ from spin_chains.quantum.states import (
     SingleState,
     SpecifiedState,
     TwoParticleHubbbardState,
+    NParticleHubbbardState,
 )
 from spin_chains.quantum.hamiltonians import Hamiltonian
-from spin_chains.functions.couplings_calculations import mu_for_specific_alpha_BO
+
+# from spin_chains.functions.couplings_calculations import mu_for_specific_alpha_BO
 
 import numpy as np
+import itertools
 
 np.set_printoptions(threshold=np.inf)
 import scipy.special
@@ -1135,6 +1140,143 @@ def quantum_communication_subspace_2(
     plt.show()
 
 
+def spatial_search_subspace_2(
+    spins, marked_strength, period, time, dt=0.1, alpha=1, open_chain=False, subspace=2
+):
+    subspace_size = int(scipy.special.comb(spins, subspace))
+    # init_state = SuperpositionState(
+    #     spins=spins, subspace=subspace, period=period, offset=0
+    # )
+    # init_state = SingleState(spins, subspace_size - 1, excitations=2)
+    # init_state = SubspaceFourierState(spins, 0, subspace)
+    # init_state = SingleExcitationState(spins, excited_spin=1)
+    init_state = SuperpositionState(spins=spins, subspace=subspace, period=period)
+
+    single_states = [
+        SingleState(subspace_size, subspace_size - j, single_subspace=True)
+        for j in range(subspace_size)
+    ]
+    # subspace_size = int(scipy.special.comb(spins, subspace))
+    # fourier_states = [SubspaceFourierState(spins, k, subspace) for k in range(subspace_size)]
+    # exitation_states = [SingleExcitationState(spins, k+1) for k in range(subspace_size)]
+
+    chain = Chain1dSubspace2LongRange(
+        spins=spins, dt=dt, alpha=alpha, open_chain=open_chain
+    )
+
+    chain.add_marked_site(1, marked_strength, gamma_rescale=True)
+    chain.add_marked_site(spins, 1, gamma_rescale=False)
+
+    # chain.add_marked_site(spins - 1, 1, gamma_rescale=False)
+    # chain.add_marked_site(spins, 1, gamma_rescale=False)
+    # chain.add_marked_site(7, 1, gamma_rescale=False)
+    # chain.add_marked_site(8, 1, gamma_rescale=False)
+    # chain.add_marked_site(11, 8)
+    # chain.add_marked_site(16, 8)
+    chain.initialise(init_state, subspace_evolution=True)
+
+    # print(chain.hamiltonian.H_subspace)
+
+    times, states = chain.time_evolution(time=time)
+
+    overlaps = []
+    state_labels = chain.state.state_labels_subspace()
+    # print(state_labels)
+    for j, state in enumerate(single_states):
+        overlaps.append(chain.overlaps_evolution(state.subspace_ket, states))
+        print(f"Computed overlaps for excitation state {j+1} ({state_labels[j]})")
+
+    # chain.state.state_barplot()
+    # print(chain.hamiltonian.H_subspace)
+
+    fig, ax = plt.subplots()
+    for y in overlaps:
+        ax.plot(times, y)
+
+    # ax1.legend([f"{sta}" for sta in chain1.state.state_labels_subspace()])
+    ax.set(xlabel="$Time~(s/\hbar)$")
+    ax.grid()
+
+    plt.show()
+
+
+def spatial_search_subspace_2_test(
+    spins, marked_strength, period, time, dt=0.1, alpha=1, open_chain=False, subspace=2
+):
+    subspace_size = int(scipy.special.comb(spins, subspace))
+    # init_state = SuperpositionState(
+    #     spins=spins, subspace=subspace, period=period, offset=0
+    # )
+    # init_state = SingleState(spins, subspace_size - 1, excitations=2)
+    # init_state = SubspaceFourierState(spins, 0, subspace)
+    # init_state = SingleExcitationState(spins, excited_spin=1)
+    init_state1 = SuperpositionState(spins=spins, subspace=subspace, period=period)
+    init_state2 = SuperpositionState(spins=spins, subspace=subspace, period=period)
+
+    single_states = [
+        SingleState(subspace_size, subspace_size - j, single_subspace=True)
+        for j in range(subspace_size)
+    ]
+    # subspace_size = int(scipy.special.comb(spins, subspace))
+    # fourier_states = [SubspaceFourierState(spins, k, subspace) for k in range(subspace_size)]
+    # exitation_states = [SingleExcitationState(spins, k+1) for k in range(subspace_size)]
+
+    chain1 = Chain1dLongRange(spins=spins, dt=dt, alpha=alpha, open_chain=open_chain)
+    chain2 = Chain1dSubspace2LongRange(
+        spins=spins, dt=dt, alpha=alpha, open_chain=open_chain
+    )
+
+    chain1.add_marked_site(1, marked_strength, gamma_rescale=True)
+    chain1.add_marked_site(spins, 1, gamma_rescale=False)
+
+    chain2.add_marked_site(1, marked_strength, gamma_rescale=True)
+    chain2.add_marked_site(spins, 1, gamma_rescale=False)
+
+    # chain.add_marked_site(spins - 1, 1, gamma_rescale=False)
+    # chain.add_marked_site(spins, 1, gamma_rescale=False)
+    # chain.add_marked_site(7, 1, gamma_rescale=False)
+    # chain.add_marked_site(8, 1, gamma_rescale=False)
+    # chain.add_marked_site(11, 8)
+    # chain.add_marked_site(16, 8)
+    chain1.initialise(init_state1, subspace_evolution=True)
+    chain2.initialise(init_state2, subspace_evolution=True)
+
+    # print(chain.hamiltonian.H_subspace)
+
+    times1, states1 = chain1.time_evolution(time=time)
+    times2, states2 = chain2.time_evolution(time=time)
+
+    overlaps1 = []
+    overlaps2 = []
+    state_labels1 = chain1.state.state_labels_subspace()
+    state_labels2 = chain2.state.state_labels_subspace()
+    # print(state_labels)
+    for j, state in enumerate(single_states):
+        overlaps1.append(chain1.overlaps_evolution(state.subspace_ket, states1))
+        overlaps2.append(chain2.overlaps_evolution(state.subspace_ket, states2))
+        # print(f"Computed overlaps for excitation state {j+1} ({state_labels[j]})")
+
+    # chain.state.state_barplot()
+    # print(chain.hamiltonian.H_subspace)
+
+    fig, axs = plt.subplots(2, 2)
+    for y in overlaps1:
+        axs[0, 0].plot(times1, y)
+    for y in overlaps2:
+        axs[0, 1].plot(times2, y)
+    # ax1.legend([f"{sta}" for sta in chain1.state.state_labels_subspace()])
+    axs[0, 0].set(xlabel="$Time~(s/\hbar)$")
+    axs[0, 0].grid()
+
+    # ax2.legend([f"{sta}" for sta in chain2.state.state_labels_subspace()])
+    axs[0, 1].set(xlabel="$Time~(s/\hbar)$")
+    axs[0, 1].grid()
+    axs[1, 0].imshow(np.real(chain1.hamiltonian.H_subspace))
+    axs[1, 1].imshow(np.real(chain2.hamiltonian.H_subspace))
+
+    plt.show()
+
+
 def quantum_communication_dual_rail(
     spins,
     marked_strength,
@@ -2062,6 +2204,57 @@ def two_sites_two_spins_hubbard_model(
     plt.show()
 
 
+def n_spins_hubbard_model(spins, excitations, edges, time, dt):
+    init_state = NParticleHubbbardState(
+        spins,
+        excitations,
+        state=[0, 2, 0],
+    )
+
+    states = [
+        np.array(state)
+        for state in itertools.product(range(excitations + 1), repeat=spins)
+        if np.sum(state) == excitations
+    ]
+    complete_states = [
+        NParticleHubbbardState(spins, excitations, state) for state in states
+    ]
+    for state in complete_states:
+        print(state.subspace_ket)
+    chain = Chain1dSubspaceNparticles(
+        spins=spins,
+        excitations=2,
+        edges=edges,
+        dt=dt,
+        js=1,
+        us=20,
+        es=[10, 0, 10],
+        vs=10,
+    )
+    print(chain.hamiltonian.H_subspace)
+
+    chain.initialise(init_state, subspace_evolution=True)
+
+    times, states = chain.time_evolution(time=time)
+
+    # print(chain.state.state_labels_subspace())
+    overlaps = []
+    for j, state in enumerate(complete_states):
+        overlaps.append(chain.overlaps_evolution(state.subspace_ket, states))
+        print(f"Computed overlaps for excitation state {j+1}")
+
+    fig, ax = plt.subplots()
+    for y in overlaps:
+        ax.plot(times, y)
+    # ax.plot(times, overlaps[0])
+    # ax.plot(times, overlaps[1] + overlaps[2])
+    # ax.plot(times, overlaps[0] + overlaps[1] + overlaps[2])
+    ax.legend([f"{sta}" for sta in chain.state.state_labels_subspace()])
+    ax.set(xlabel="$Time~(s/\hbar)$")
+    ax.grid()
+    plt.show()
+
+
 def non_superposition_spatial_search(
     spins, k, marked_strength, time, dt=0.1, alpha=1, open_chain=False
 ):
@@ -2762,24 +2955,38 @@ if __name__ == "__main__":
     #     dt=0.01,
     # )
 
-    spins = 31
-    approx_gamma, approx_time, mu = compute_approximate_gamma_and_mu(
-        target_alpha=0.5, spins=spins
-    )
+    # spins = 31
+    # approx_gamma, approx_time, mu = compute_approximate_gamma_and_mu(
+    #     target_alpha=0.5, spins=spins
+    # )
 
-    spatial_search_experimental_parameters(
-        spins=spins,
-        marked_strength=approx_gamma,
-        mu=mu,
-        time=approx_time * 2,
-        dt=0.01,
-    )
+    # spatial_search_experimental_parameters(
+    #     spins=spins,
+    #     marked_strength=approx_gamma,
+    #     mu=mu,
+    #     time=approx_time * 2,
+    #     dt=0.01,
+    # )
 
-    spatial_search_experimental_parameters(
-        spins=spins,
-        marked_strength=approx_gamma,
-        mu=mu,
-        time=approx_time * 2 * approx_gamma,
-        dt=1e-8,
-        gamma_rescale=False,
+    # spatial_search_experimental_parameters(
+    #     spins=spins,
+    #     marked_strength=approx_gamma,
+    #     mu=mu,
+    #     time=approx_time * 2 * approx_gamma,
+    #     dt=1e-8,
+    #     gamma_rescale=False,
+    # )
+
+    # spatial_search_subspace_2(
+    #     spins=20,
+    #     marked_strength=0.1074997587355275,
+    #     period=1,
+    #     time=15,
+    #     dt=0.1,
+    #     alpha=0.5,
+    #     open_chain=True,
+    # )
+
+    n_spins_hubbard_model(
+        spins=3, excitations=2, edges=[[0, 1], [1, 2]], time=5, dt=0.01
     )

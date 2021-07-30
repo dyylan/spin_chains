@@ -7,8 +7,10 @@ from .hamiltonians import (
     LongRangeXYHamiltonian,
     XYHamiltonian1dSubspace,
     HubbardHamiltonian2particles,
+    HubbardHamiltonianNparticles,
     LongRangeXYHamiltonian1d,
     LongRangeXYHamiltonian1dExp,
+    LongRangeXYHamiltonian1dSubspace2,
 )
 from .states import FourierState
 
@@ -129,14 +131,21 @@ class Chain:
         return overlaps
 
     @staticmethod
-    def overlaps_noisy_evolution(bra, noisy_states, norm=True):
+    def overlaps_noisy_evolution(bra, noisy_states, norm=True, std_dev=False):
         overlaps = [
             Chain.overlaps_evolution(bra, sample, norm=False) for sample in noisy_states
         ]
         mean_overlaps = np.mean(overlaps, axis=0)
+        if std_dev:
+            std_dev_overlaps = np.std(overlaps, axis=0)
         if norm:
             mean_overlaps = Chain._square_norm(mean_overlaps)
-        return mean_overlaps
+            if std_dev:
+                std_dev_overlaps = Chain._square_norm(std_dev_overlaps)
+        if std_dev:
+            return mean_overlaps, std_dev_overlaps
+        else:
+            return mean_overlaps
 
     @staticmethod
     @jit(nopython=True)
@@ -211,6 +220,13 @@ class Chain1dSubspace(Chain):
     def update_js(self, js):
         self.hamiltonian.update_js(js)
 
+    def add_broken_spin(self, spin, t2):
+        if not self.noisy_evolution:
+            raise ValueError(f"Evolution must be noisy for adding a broken spin.")
+        if not self.initialised:
+            raise ValueError(f"Chain must already be initialised.")
+        self.hamiltonian.add_broken_spin(spin, t2)
+
     def initialise(self, state, subspace_evolution=True, noisy_evolution=False):
         self._check_state(state)
         self.initial_state = state
@@ -244,6 +260,37 @@ class Chain1dSubspace2particles(Chain1dSubspace):
         super().__init__(spins)
         self.hamiltonian = HubbardHamiltonian2particles(
             spins, dt, js, us, es, vs, open_chain
+        )
+
+    def add_marked_site(self, spin, h=1, gamma_rescale=False):
+        raise NotImplementedError(f"Not implemented for this Chain.")
+
+    def update_marked_site(self, spin, h=1):
+        raise NotImplementedError(f"Not implemented for this Chain.")
+
+
+class Chain1dSubspaceNparticles(Chain1dSubspace):
+    def __init__(
+        self,
+        spins,
+        excitations=2,
+        edges=[[0, 1], [1, 2]],
+        dt=0.1,
+        js=1,
+        us=1,
+        es=0,
+        vs=0,
+    ):
+        super().__init__(spins)
+        self.hamiltonian = HubbardHamiltonianNparticles(
+            spins,
+            excitations,
+            edges,
+            dt,
+            js,
+            us,
+            es,
+            vs,
         )
 
     def add_marked_site(self, spin, h=1, gamma_rescale=False):
@@ -298,6 +345,7 @@ class Chain1dSubspaceLongRangeExp(Chain1dSubspace):
         omega=2 * np.pi * np.array([6e6, 5e6, 1e6]),
         use_optimal_omega=False,
         t2=10e-3,
+        samples=0,
         hbar=False,
     ):
         super().__init__(spins)
@@ -309,7 +357,8 @@ class Chain1dSubspaceLongRangeExp(Chain1dSubspace):
             delta_k=delta_k,
             omega=omega,
             use_optimal_omega=use_optimal_omega,
-            t2=10e-3,
+            t2=t2,
+            samples=samples,
             hbar=hbar,
         )
 
@@ -319,6 +368,6 @@ class Chain1dSubspace2LongRange(Chain1dSubspace):
         self, spins, dt=0.1, alpha=1, open_chain=False, sender_reciever_qubits=False
     ):
         super().__init__(spins)
-        self.hamiltonian = LongRangeXYHamiltonian1d(
-            spins, dt, alpha, open_chain, sender_reciever_qubits
+        self.hamiltonian = LongRangeXYHamiltonian1dSubspace2(
+            spins, dt, alpha, open_chain
         )
