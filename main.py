@@ -3,7 +3,7 @@ from spin_chains.quantum.chains import (
     Chain1dSubspace,
     Chain1dSubspace2particles,
     Chain1dSubspaceNparticles,
-    Chain1dSubspace2LongRange,
+    Chain1dSubspaceNLongRange,
     Chain1dSubspaceLongRange,
     Chain1dLongRange,
     Chain1dSubspaceLongRangeExp,
@@ -18,6 +18,7 @@ from spin_chains.quantum.states import (
     SpecifiedState,
     TwoParticleHubbbardState,
     NParticleHubbbardState,
+    NExcitationState,
 )
 from spin_chains.quantum.hamiltonians import Hamiltonian
 
@@ -304,12 +305,12 @@ def test4(spins, subspace, time):
 
 
 def testXYchain(spins, subspace, period, time):
-    init_state = SuperpositionState(
-        spins=spins, subspace=subspace, period=period, offset=0
-    )
+    # init_state = SuperpositionState(
+    #     spins=spins, subspace=subspace, period=period, offset=0
+    # )
     # init_state = PeriodicState(spins=spins, period=period)
     # init_state = SubspaceFourierState(spins, 0, subspace)
-    # init_state = SingleExcitationState(spins, excited_spin=1)
+    init_state = SingleState(spins, 1, single_subspace=True)
     # final_state = SuperpositionState(spins=spins, subspace=subspace, period=period)
     single_states = [
         SingleState(spins, j + 1, single_subspace=True) for j in range(spins)
@@ -319,8 +320,11 @@ def testXYchain(spins, subspace, period, time):
     # exitation_states = [SingleExcitationState(spins, k+1) for k in range(subspace_size)]
     # print(init_state.subspace_ket)
 
-    chain = Chain1dSubspace(spins=spins, dt=0.01, js=1)
+    chain = Chain1dSubspace(
+        spins=spins, dt=0.01, js=[-7.87 * 2, -3.48 * 2, 0.91 * 2, 0]
+    )
 
+    print(chain.hamiltonian.H)
     chain.initialise(init_state)
     times, states = chain.time_evolution(time=time)
 
@@ -336,38 +340,38 @@ def testXYchain(spins, subspace, period, time):
     for y in overlaps:
         ax.plot(times, y)
     # ax.legend([f"j = {j+1}" for j in range(spins)])
-    line1 = mlines.Line2D(
-        [],
-        [],
-        color="tab:green",
-        linestyle="solid",
-        label="$|1\\rangle, |5\\rangle, |9\\rangle, |13\\rangle$",
-    )
-    line2 = mlines.Line2D(
-        [],
-        [],
-        color="tab:purple",
-        linestyle="solid",
-        label="$|3\\rangle, |7\\rangle, |11\\rangle, |15\\rangle$",
-    )
-    line3 = mlines.Line2D(
-        [],
-        [],
-        color="tab:brown",
-        linestyle="solid",
-        label="$|2\\rangle, |4\\rangle, |6\\rangle, |8\\rangle,$"
-        "\n$|10\\rangle, |12\\rangle, |14\\rangle, |16\\rangle$",
-    )
-    legend1 = plt.legend(
-        handles=[line1, line2, line3],
-        bbox_to_anchor=(1, 1),
-        fontsize=fontsize_legend,
-    )
-    ax.add_artist(legend1)
+    # line1 = mlines.Line2D(
+    #     [],
+    #     [],
+    #     color="tab:green",
+    #     linestyle="solid",
+    #     label="$|1\\rangle, |5\\rangle, |9\\rangle, |13\\rangle$",
+    # )
+    # line2 = mlines.Line2D(
+    #     [],
+    #     [],
+    #     color="tab:purple",
+    #     linestyle="solid",
+    #     label="$|3\\rangle, |7\\rangle, |11\\rangle, |15\\rangle$",
+    # )
+    # line3 = mlines.Line2D(
+    #     [],
+    #     [],
+    #     color="tab:brown",
+    #     linestyle="solid",
+    #     label="$|2\\rangle, |4\\rangle, |6\\rangle, |8\\rangle,$"
+    #     "\n$|10\\rangle, |12\\rangle, |14\\rangle, |16\\rangle$",
+    # )
+    # legend1 = plt.legend(
+    #     handles=[line1, line2, line3],
+    #     bbox_to_anchor=(1, 1),
+    #     fontsize=fontsize_legend,
+    # )
+    # ax.add_artist(legend1)
     ax.set_xlabel("Time $(s/\hbar)$", fontsize=fontsize_axis)
     plt.tight_layout()
     ax.grid()
-    fig.savefig("fig", bbox_extra_artists=(legend1,), bbox_inches="tight")
+    # fig.savefig("fig", bbox_extra_artists=(legend1,), bbox_inches="tight")
     plt.show()
 
 
@@ -1143,25 +1147,28 @@ def quantum_communication_subspace_2(
 def spatial_search_subspace_2(
     spins, marked_strength, period, time, dt=0.1, alpha=1, open_chain=False, subspace=2
 ):
-    subspace_size = int(scipy.special.comb(spins, subspace))
+    states = [
+        list(s)
+        for s in itertools.product(range(spins), repeat=2)
+        if len(s) == len(set(s))
+    ]
+    subspace_size = len(states)
     # init_state = SuperpositionState(
     #     spins=spins, subspace=subspace, period=period, offset=0
     # )
-    # init_state = SingleState(spins, subspace_size - 1, excitations=2)
     # init_state = SubspaceFourierState(spins, 0, subspace)
     # init_state = SingleExcitationState(spins, excited_spin=1)
-    init_state = SuperpositionState(spins=spins, subspace=subspace, period=period)
+    # init_state = SuperpositionState(spins=spins, subspace=subspace, period=period)
+    superposition_state = [1 / np.sqrt(subspace_size) for _ in range(subspace_size)]
+    init_state = NExcitationState(spins, state_array=superposition_state)
 
-    single_states = [
-        SingleState(subspace_size, subspace_size - j, single_subspace=True)
-        for j in range(subspace_size)
-    ]
+    single_states = [NExcitationState(spins, sites=s) for s in states]
     # subspace_size = int(scipy.special.comb(spins, subspace))
     # fourier_states = [SubspaceFourierState(spins, k, subspace) for k in range(subspace_size)]
     # exitation_states = [SingleExcitationState(spins, k+1) for k in range(subspace_size)]
 
-    chain = Chain1dSubspace2LongRange(
-        spins=spins, dt=dt, alpha=alpha, open_chain=open_chain
+    chain = Chain1dSubspaceNLongRange(
+        spins=spins, excitations=2, dt=dt, alpha=alpha, open_chain=open_chain
     )
 
     chain.add_marked_site(1, marked_strength, gamma_rescale=True)
@@ -1203,7 +1210,15 @@ def spatial_search_subspace_2(
 def spatial_search_subspace_2_test(
     spins, marked_strength, period, time, dt=0.1, alpha=1, open_chain=False, subspace=2
 ):
-    subspace_size = int(scipy.special.comb(spins, subspace))
+    states = [
+        list(s)
+        for s in itertools.product(range(spins), repeat=2)
+        if len(s) == len(set(s))
+    ]
+    subspace_size2 = len(states)
+    superposition_state = [1 / np.sqrt(subspace_size2) for _ in range(subspace_size2)]
+
+    subspace_size1 = int(scipy.special.comb(spins, subspace))
     # init_state = SuperpositionState(
     #     spins=spins, subspace=subspace, period=period, offset=0
     # )
@@ -1211,19 +1226,21 @@ def spatial_search_subspace_2_test(
     # init_state = SubspaceFourierState(spins, 0, subspace)
     # init_state = SingleExcitationState(spins, excited_spin=1)
     init_state1 = SuperpositionState(spins=spins, subspace=subspace, period=period)
-    init_state2 = SuperpositionState(spins=spins, subspace=subspace, period=period)
+    # init_state2 = SuperpositionState(spins=spins, subspace=subspace, period=period)
+    init_state2 = NExcitationState(spins, state_array=superposition_state)
 
-    single_states = [
-        SingleState(subspace_size, subspace_size - j, single_subspace=True)
-        for j in range(subspace_size)
+    single_states1 = [
+        SingleState(subspace_size1, subspace_size1 - j, single_subspace=True)
+        for j in range(subspace_size1)
     ]
+    single_states2 = [NExcitationState(spins, sites=s) for s in states]
     # subspace_size = int(scipy.special.comb(spins, subspace))
     # fourier_states = [SubspaceFourierState(spins, k, subspace) for k in range(subspace_size)]
     # exitation_states = [SingleExcitationState(spins, k+1) for k in range(subspace_size)]
 
     chain1 = Chain1dLongRange(spins=spins, dt=dt, alpha=alpha, open_chain=open_chain)
-    chain2 = Chain1dSubspace2LongRange(
-        spins=spins, dt=dt, alpha=alpha, open_chain=open_chain
+    chain2 = Chain1dSubspaceNLongRange(
+        spins=spins, excitations=2, dt=dt, alpha=alpha, open_chain=open_chain
     )
 
     chain1.add_marked_site(1, marked_strength, gamma_rescale=True)
@@ -1251,8 +1268,9 @@ def spatial_search_subspace_2_test(
     state_labels1 = chain1.state.state_labels_subspace()
     state_labels2 = chain2.state.state_labels_subspace()
     # print(state_labels)
-    for j, state in enumerate(single_states):
+    for j, state in enumerate(single_states1):
         overlaps1.append(chain1.overlaps_evolution(state.subspace_ket, states1))
+    for j, state in enumerate(single_states2):
         overlaps2.append(chain2.overlaps_evolution(state.subspace_ket, states2))
         # print(f"Computed overlaps for excitation state {j+1} ({state_labels[j]})")
 
@@ -1692,6 +1710,50 @@ def quantum_state_transfer_engineered_chain(j_noise=0):
     plt.show()
 
 
+def quantum_state_transfer_engineered_chain_2(j_noise=0):
+    spins = 32
+    time = 40
+
+    single_states = [
+        SingleState(spins, j + 1, single_subspace=True) for j in range(spins)
+    ]
+
+    init_state = SingleState(spins, 1, single_subspace=True)
+
+    j_noises = np.random.normal(0, j_noise, spins)
+
+    js_engineered = [
+        (np.sqrt((spin + 1) * (spins - spin - 1)) / 16) + j_noises[spin]
+        for spin in range(spins)
+    ]
+
+    print(js_engineered)
+    # chain = Chain1dSubspace(spins=spins, dt=0.01, js=js_engineered, open_chain=True)
+    chain = Chain1dSubspace(spins=spins, dt=0.01, js=1, open_chain=True)
+
+    for spin in range(1, spins + 1, 1):
+        chain.add_marked_site(spin, h=1 * spin)
+    # print(chain.hamiltonian.H)
+
+    chain.initialise(init_state)
+
+    times, states = chain.time_evolution(time=time)
+
+    overlaps = []
+    for j, state in enumerate(single_states):
+        overlaps.append(chain.overlaps_evolution(state.subspace_ket, states))
+        print(f"Computed overlaps for excitation state {j+1}")
+
+    fig, ax = plt.subplots()
+    for y in overlaps:
+        ax.plot(times, y)
+    # ax.legend([f"site {j+1}" for j in range(spins)], loc=2)
+    ax.legend([f"site 1", f"site 32"], loc=1)
+    ax.set(xlabel="$Time~(s/\hbar)$")
+    ax.grid()
+    plt.show()
+
+
 def quantum_state_transfer_engineered_chain_noise_averaging(samples=100):
     spins = 32
     time = 40
@@ -1930,11 +1992,11 @@ def basic_two_spins_hubbard_model(
         if use_es_engineered
         else e
     )
-    # es_engineered = [10, 0, 10]
-    es_engineered = [10, 5, 0, 5, 10]
+    es_engineered = [10, 0, 10]
+    # es_engineered = [10, 5, 0, 5, 10]
     print(f"es_engineered = {es_engineered}")
 
-    init_state = TwoParticleHubbbardState(spins, sites=[3, 3])
+    init_state = TwoParticleHubbbardState(spins, sites=[2, 2])
     # sites = [1, 2]
     # state = [
     #     1 / np.sqrt(2)
@@ -1950,9 +2012,9 @@ def basic_two_spins_hubbard_model(
 
     if only_target_state:
         complete_states = [
-            TwoParticleHubbbardState(spins, sites=[3, 3]),
-            TwoParticleHubbbardState(spins, sites=[2, 4]),
-            TwoParticleHubbbardState(spins, sites=[4, 2]),
+            TwoParticleHubbbardState(spins, sites=[2, 2]),
+            TwoParticleHubbbardState(spins, sites=[1, 3]),
+            TwoParticleHubbbardState(spins, sites=[3, 1]),
         ]
     else:
         complete_states = [
@@ -1971,7 +2033,7 @@ def basic_two_spins_hubbard_model(
         open_chain=open_chain,
     )
     print(chain.hamiltonian.H_subspace)
-
+    print(init_state.state_labels_full())
     chain.initialise(init_state, subspace_evolution=True)
 
     times, states = chain.time_evolution(time=time)
@@ -2015,14 +2077,23 @@ def end_to_end_two_spins_hubbard_model(
 
     js_engineered = (
         [
-            j * (np.sqrt((spin + 1) * (spins - spin - 1)) / (spins / 2))
+            j
+            * (
+                np.sqrt(np.power((spins + 1), 2) - np.power((spins - 2 * spin), 2))
+                / (spins / 2)
+            )
             + j_noises[spin]
-            for spin in range(spins)
+            for spin in range(1, spins)
         ]
         if use_js_engineered
         else j
     )
-
+    # js_engineered = (
+    #     [j if (spin == 1 or spin == spins) else j / 10 for spin in range(1, spins)]
+    #     if use_js_engineered
+    #     else j
+    # )
+    js_engineered.append(0)
     print(f"js_engineered = {js_engineered}")
 
     us_engineered = (
@@ -2049,8 +2120,12 @@ def end_to_end_two_spins_hubbard_model(
 
     es_engineered = (
         [
-            e * (np.sqrt((spin + 1) * (spins - spin)) / (spins / 2))
-            for spin in range(spins)
+            e
+            * (
+                np.sqrt(np.power((spins + 1), 2) - np.power((spins + 1 - 2 * spin), 2))
+                / (spins / 2)
+            )
+            for spin in range(1, spins + 1)
         ]
         if use_es_engineered
         else e
@@ -2060,7 +2135,7 @@ def end_to_end_two_spins_hubbard_model(
     print(f"es_engineered = {es_engineered}")
 
     # init_state = TwoParticleHubbbardState(spins, sites=[1, 3])
-    sites = [1, 1]
+    sites = [1, 2]
 
     # state = [
     #     1 / np.sqrt(2)
@@ -2074,13 +2149,151 @@ def end_to_end_two_spins_hubbard_model(
     # ]
     # init_state = TwoParticleHubbbardState(spins, sites=sites, state_array=state)
 
-    init_state = TwoParticleHubbbardState(spins, sites=sites)
+    init_state = TwoParticleHubbbardState(
+        spins, sites=[[1, 2], [2, 1]], multi_sites=True
+    )
+    # init_state = TwoParticleHubbbardState(spins, sites=[2, 1])
+
+    if only_target_state:
+        complete_states = [
+            TwoParticleHubbbardState(spins, sites=[1, 2]),
+            TwoParticleHubbbardState(spins, sites=[2, 1]),
+            TwoParticleHubbbardState(spins, sites=[spins - 1, spins]),
+            TwoParticleHubbbardState(spins, sites=[spins, spins - 1]),
+        ]
+    else:
+        complete_states = [
+            TwoParticleHubbbardState(spins, sites=[i + 1, j + 1])
+            for i in range(spins)
+            for j in range(spins)
+        ]
+
+    chain = Chain1dSubspace2particles(
+        spins=spins,
+        dt=dt,
+        js=js_engineered,
+        us=us_engineered,
+        es=es_engineered,
+        vs=vs_engineered,
+        open_chain=open_chain,
+    )
+    # print(chain.hamiltonian.H_subspace)
+
+    chain.initialise(init_state, subspace_evolution=True)
+
+    times, states = chain.time_evolution(time=time)
+
+    # print(chain.state.state_labels_subspace())
+    overlaps = []
+    for j, state in enumerate(complete_states):
+        overlaps.append(chain.overlaps_evolution(state.subspace_ket, states))
+        print(f"Computed overlaps for excitation state {j+1}")
+
+    fig, ax = plt.subplots()
+    # for y in overlaps:
+    #     ax.plot(times, y)
+    ax.plot(times, overlaps[0] + overlaps[1])
+    ax.plot(times, overlaps[2] + overlaps[3])
+    # ax.legend([f"{sta}" for sta in chain.state.state_labels_subspace()[:10]])
+    # ax.legend(["020", "101", "020 + 101"], loc="upper right")
+    ax.legend(
+        [
+            "$| 1, 2 \\rangle$ + $| 2, 1 \\rangle$",
+            "$| n-1, n \\rangle$ + $| n, n-1 \\rangle$",
+        ]
+    )
+    ax.set(xlabel="$Time~(s/\hbar)$")
+    ax.grid()
+    plt.show()
+
+
+def end_to_end_two_spins_hubbard_model_2(
+    spins,
+    time=100,
+    dt=0.1,
+    j=1,
+    j_noise=0,
+    u=1,
+    v=1,
+    e=1,
+    open_chain=True,
+    use_js_engineered=True,
+    use_us_engineered=False,
+    use_vs_engineered=False,
+    use_es_engineered=False,
+    only_target_state=False,
+):
+    j_noises = np.random.normal(0, j_noise, spins)
+
+    js_engineered = (
+        [j / 30 if (spin == 1 or spin == spins - 1) else j for spin in range(1, spins)]
+        if use_js_engineered
+        else j
+    )
+    js_engineered.append(0)
+    print(f"js_engineered = {js_engineered}")
+
+    us_engineered = (
+        [
+            u * (np.sqrt((spin + 1) * (spins - spin)) / (spins / 2))
+            for spin in range(spins)
+        ]
+        if use_us_engineered
+        else u
+    )
+
+    print(f"us_engineered = {us_engineered}")
+
+    vs_engineered = (
+        [
+            v * (np.sqrt((spin + 1) * (spins - spin)) / (spins / 2))
+            for spin in range(spins)
+        ]
+        if use_vs_engineered
+        else v
+    )
+
+    print(f"vs_engineered = {vs_engineered}")
+
+    es_engineered = (
+        [
+            e
+            * (
+                np.sqrt(np.power((spins + 1), 2) - np.power((spins + 1 - 2 * spin), 2))
+                / (spins / 2)
+            )
+            for spin in range(1, spins + 1)
+        ]
+        if use_es_engineered
+        else e
+    )
+    # es_engineered = [10, 0, 10]
+    # es_engineered = [0, 0]
+    print(f"es_engineered = {es_engineered}")
+
+    # init_state = TwoParticleHubbbardState(spins, sites=[1, 3])
+    sites = [1, 2]
+
+    # state = [
+    #     1 / np.sqrt(2)
+    #     if (
+    #         (i + 1 == sites[0] and j + 1 == sites[1])
+    #         or (j + 1 == sites[0] and i + 1 == sites[1])
+    #     )
+    #     else 0
+    #     for i in range(spins)
+    #     for j in range(spins)
+    # ]
+    # init_state = TwoParticleHubbbardState(spins, sites=sites, state_array=state)
+
+    init_state = TwoParticleHubbbardState(spins, sites=[1, 1])
+    # init_state = TwoParticleHubbbardState(spins, sites=[2, 1])
 
     if only_target_state:
         complete_states = [
             TwoParticleHubbbardState(spins, sites=[1, 1]),
             TwoParticleHubbbardState(spins, sites=[spins, spins]),
-            TwoParticleHubbbardState(spins, sites=[spins // 2, spins // 2]),
+            TwoParticleHubbbardState(spins, sites=[2, 2]),
         ]
     else:
         complete_states = [
@@ -2113,16 +2326,13 @@ def end_to_end_two_spins_hubbard_model(
     fig, ax = plt.subplots()
     for y in overlaps:
         ax.plot(times, y)
-    # ax.plot(times, overlaps[0])
-    # ax.plot(times, overlaps[1] + overlaps[2])
-    # ax.plot(times, overlaps[0] + overlaps[1] + overlaps[2])
-    # ax.legend([f"{sta}" for sta in chain.state.state_labels_subspace()[:10]])
+
+    # ax.legend([f"{sta}" for sta in chain.state.state_labels_subspace()])
     # ax.legend(["020", "101", "020 + 101"], loc="upper right")
     ax.legend(
         [
-            "$| 1 \\rangle | n \\rangle$",
-            "$| n \\rangle | 1 \\rangle$",
-            "$| n/2 \\rangle | n/2 \\rangle$",
+            "$| 1, 1 \\rangle$",
+            "$| n, n \\rangle$",
         ]
     )
     ax.set(xlabel="$Time~(s/\hbar)$")
@@ -2158,18 +2368,10 @@ def two_sites_two_spins_hubbard_model(
     # ]
     # init_state = TwoParticleHubbbardState(spins, sites=[1, 2], state_array=state)
 
-    if only_target_state:
-        complete_states = [
-            TwoParticleHubbbardState(spins, sites=[2, 2]),
-            TwoParticleHubbbardState(spins, sites=[1, 2]),
-            TwoParticleHubbbardState(spins, sites=[2, 1]),
-        ]
-    else:
-        complete_states = [
-            TwoParticleHubbbardState(spins, sites=[i + 1, j + 1])
-            for i in range(spins)
-            for j in range(spins)
-        ]
+    state_11 = TwoParticleHubbbardState(spins, sites=[1, 1])
+    state_12 = TwoParticleHubbbardState(spins, sites=[1, 2])
+    state_21 = TwoParticleHubbbardState(spins, sites=[2, 1])
+    state_22 = TwoParticleHubbbardState(spins, sites=[2, 2])
 
     chain = Chain1dSubspace2particles(
         spins=spins,
@@ -2188,48 +2390,218 @@ def two_sites_two_spins_hubbard_model(
 
     # print(chain.state.state_labels_subspace())
     overlaps = []
-    for j, state in enumerate(complete_states):
-        overlaps.append(chain.overlaps_evolution(state.subspace_ket, states))
-        print(f"Computed overlaps for excitation state {j+1}")
+    overlaps.append(chain.overlaps_evolution(state_11.subspace_ket, states))
+    overlaps.append(chain.overlaps_evolution(state_12.subspace_ket, states))
+    overlaps.append(chain.overlaps_evolution(state_21.subspace_ket, states))
+    overlaps.append(chain.overlaps_evolution(state_22.subspace_ket, states))
 
     fig, ax = plt.subplots()
-    for y in overlaps:
-        ax.plot(times, y)
-    # ax.plot(times, overlaps[0])
-    # ax.plot(times, overlaps[1] + overlaps[2])
-    # ax.plot(times, overlaps[0] + overlaps[1] + overlaps[2])
-    ax.legend([f"{sta}" for sta in chain.state.state_labels_subspace()])
-    ax.set(xlabel="$Time~(s/\hbar)$")
+    ax.plot(times, overlaps[0])
+    ax.plot(times, overlaps[1] + overlaps[2])
+    ax.plot(times, overlaps[3])
+    ax.legend(["state 11", "states 12 and 21", "state 22"], loc="lower right")
+    ax.set(xlabel="Time$~(s/\hbar)$")
     ax.grid()
     plt.show()
 
 
-def n_spins_hubbard_model(spins, excitations, edges, time, dt):
-    init_state = NParticleHubbbardState(
-        spins,
-        excitations,
-        state=[0, 2, 0],
+def two_sites_two_spins_hubbard_model_noise(
+    time=100,
+    dt=0.1,
+    js=1,
+    j_noise=0,
+    us=1,
+    vs=1,
+    es=1,
+    open_chain=True,
+    noise=0,
+    samples=0,
+    plot_label=None,
+    plot_title=False,
+    plot_legend=False,
+    only_target_state=False,
+):
+    spins = 2
+    j_noises = np.random.normal(0, j_noise, spins)
+
+    init_state = TwoParticleHubbbardState(spins, sites=[1, 1])
+
+    state_11 = TwoParticleHubbbardState(spins, sites=[1, 1])
+    state_12 = TwoParticleHubbbardState(spins, sites=[1, 2])
+    state_21 = TwoParticleHubbbardState(spins, sites=[2, 1])
+    state_22 = TwoParticleHubbbardState(spins, sites=[2, 2])
+
+    chain = Chain1dSubspace2particles(
+        spins=spins,
+        dt=dt,
+        js=js,
+        us=us,
+        es=es,
+        vs=vs,
+        open_chain=open_chain,
+        noise=noise,
+        samples=samples,
+    )
+    print(chain.hamiltonian.H_subspace)
+
+    chain.initialise(init_state, subspace_evolution=True, noisy_evolution=True)
+
+    times, states = chain.noisy_time_evolution(time=time)
+
+    # print(chain.state.state_labels_subspace())
+    overlaps = []
+    norm = True
+    overlaps.append(
+        chain.overlaps_noisy_evolution(state_11.subspace_ket, states, norm=norm)
+    )
+    overlaps.append(
+        chain.overlaps_noisy_evolution(state_12.subspace_ket, states, norm=norm)
+    )
+    overlaps.append(
+        chain.overlaps_noisy_evolution(state_21.subspace_ket, states, norm=norm)
+    )
+    overlaps.append(
+        chain.overlaps_noisy_evolution(state_22.subspace_ket, states, norm=norm)
     )
 
-    states = [
-        np.array(state)
-        for state in itertools.product(range(excitations + 1), repeat=spins)
-        if np.sum(state) == excitations
-    ]
-    complete_states = [
-        NParticleHubbbardState(spins, excitations, state) for state in states
-    ]
+    peaks, _ = find_peaks(overlaps[1] + overlaps[2], height=(0.2, 1.05))
+    print(overlaps[1][peaks[0]] + overlaps[2][peaks[0]])
+    print(times[peaks[0]])
+
+    colors = ["blue", "green", "red"]
+
+    fig, ax = plt.subplots(figsize=[8, 6])
+    if plot_title:
+        e1 = f"{es[0]}\\Gamma" if es[0] else "0"
+        e2 = f"{es[1]}\\Gamma" if es[1] else "0"
+        fig.suptitle(
+            f"$\\varepsilon_1 = {e1}$, $\\varepsilon_2 = {e2}$ ",
+            fontsize=22,
+        )
+    ax.plot(times, overlaps[0], color=colors[0])
+    ax.plot(times, overlaps[1] + overlaps[2], color=colors[1])
+    # ax.plot(times, overlaps[1])
+    # ax.plot(times, overlaps[2])
+    ax.plot(times, overlaps[3], color=colors[2])
+    # ax.legend(["state 11", "states 12 and 21", "state 22"], loc="lower right")
+    if plot_legend:
+        ax.legend(
+            ["$|1,1\\rangle$", "$|1,2\\rangle + |2,1\\rangle$", "$|2,2\\rangle$"],
+            loc="center right",
+        )
+    ax.set_xlabel("Time$~(\\hbar/\\Gamma)$", fontsize=22)
+    ax.set_ylabel("Fidelity", fontsize=22)
+    ax.tick_params(labelsize=20)
+    if plot_label:
+        ax.text(0.015, 0.95, plot_label, fontsize=24, transform=plt.gcf().transFigure)
+
+    ax.grid()
+    plt.savefig(
+        f"plots/Hubbard_model/sites=2/electrons=2/js={js}_us={us}_vs={vs}_es={es}_noise={noise}.pdf"
+    )
+    plt.show()
+
+
+def two_sites_two_spins_hubbard_model_noises(
+    time=100,
+    dt=0.1,
+    js=1,
+    j_noise=0,
+    us=1,
+    vs=1,
+    es=1,
+    open_chain=True,
+    noises=0,
+    samples=0,
+    only_target_state=False,
+):
+    spins = 2
+    init_state = TwoParticleHubbbardState(spins, sites=[1, 1])
+
+    state_11 = TwoParticleHubbbardState(spins, sites=[1, 1])
+    state_12 = TwoParticleHubbbardState(spins, sites=[1, 2])
+    state_21 = TwoParticleHubbbardState(spins, sites=[2, 1])
+    state_22 = TwoParticleHubbbardState(spins, sites=[2, 2])
+
+    st_times = []
+    st_fidelities = []
+    for noise in noises:
+        chain = Chain1dSubspace2particles(
+            spins=spins,
+            dt=dt,
+            js=js,
+            us=us,
+            es=es,
+            vs=vs,
+            open_chain=open_chain,
+            noise=noise,
+            samples=samples,
+        )
+        print(chain.hamiltonian.H_subspace)
+
+        chain.initialise(init_state, subspace_evolution=True, noisy_evolution=True)
+
+        times, states = chain.noisy_time_evolution(time=time)
+
+        # print(chain.state.state_labels_subspace())
+        overlaps = []
+        overlaps.append(chain.overlaps_noisy_evolution(state_11.subspace_ket, states))
+        overlaps.append(chain.overlaps_noisy_evolution(state_12.subspace_ket, states))
+        overlaps.append(chain.overlaps_noisy_evolution(state_21.subspace_ket, states))
+        overlaps.append(chain.overlaps_noisy_evolution(state_22.subspace_ket, states))
+
+        states_12_21 = overlaps[1] + overlaps[2]
+        peaks, _ = find_peaks(states_12_21, height=(0.2, 1.05))
+        st_times.append(times[peaks[0]])
+        st_fidelities.append(states_12_21[peaks[0]])
+
+    fig, ax = plt.subplots()
+    ax.plot(noises, st_fidelities)
+    ax.set(xlabel="Noise")
+    ax.grid()
+    plt.savefig(
+        f"plots/Hubbard_model/sites=2/electrons=2/fidelities_js={js}_us={us}_vs={vs}_es={es}_various_noises.pdf"
+    )
+    plt.show()
+
+    fig, ax = plt.subplots()
+    ax.plot(noises, st_times)
+    ax.set(xlabel="Noise")
+    ax.grid()
+    plt.savefig(
+        f"plots/Hubbard_model/sites=2/electrons=2/times_js={js}_us={us}_vs={vs}_es={es}_various_noises.pdf"
+    )
+    plt.show()
+
+
+def n_spins_hubbard_model():
+    # spins = 4
+    # excitations = 3
+    # edges = [[0, 3], [1, 3], [2, 3]]
+    spins = 2
+    excitations = 4
+    edges = [[0, 1]]
+    time = 10
+    dt = 0.001
+    init_state = NParticleHubbbardState(
+        spins,
+        sites=[0, 0, 0, 0],  # [3,3,3],
+    )
+    print(init_state.subspace_ket)
+    states = [list(s) for s in itertools.product(range(spins), repeat=excitations)]
+    print(states)
+    complete_states = [NParticleHubbbardState(spins, sites=state) for state in states]
     for state in complete_states:
         print(state.subspace_ket)
     chain = Chain1dSubspaceNparticles(
         spins=spins,
-        excitations=2,
+        excitations=excitations,
         edges=edges,
         dt=dt,
         js=1,
-        us=20,
-        es=[10, 0, 10],
-        vs=10,
+        us=[20, 20],  # [1, 1, 1, 20],
+        es=[0, 10],  # [10, 10, 10, 0],
+        vs=0,
     )
     print(chain.hamiltonian.H_subspace)
 
@@ -2453,21 +2825,6 @@ if __name__ == "__main__":
     # test3(2, 1, np.pi)
     # test4(2, 1, np.pi)
     # u_list = [0.5, 10, 10, 10, 10, 10, 10, 10, 10, 10]
-    # basic_two_spins_hubbard_model(
-    #     spins=5,
-    #     j=1,
-    #     u=20,
-    #     e=0,
-    #     v=10,
-    #     use_js_engineered=False,
-    #     use_es_engineered=True,
-    #     use_us_engineered=False,
-    #     use_vs_engineered=False,
-    #     dt=0.01,
-    #     time=100,
-    #     only_target_state=True,
-    #     open_chain=True,
-    # )
 
     # end_to_end_two_spins_hubbard_model(
     #     spins=20,
@@ -2485,16 +2842,6 @@ if __name__ == "__main__":
     #     open_chain=False,
     # )
 
-    # two_sites_two_spins_hubbard_model(
-    #     js=1,
-    #     us=[20, 20],
-    #     es=[0, 0],
-    #     vs=[0, 0],
-    #     dt=0.01,
-    #     time=20,
-    #     only_target_state=False,
-    #     open_chain=True,
-    # )
     # js = [
     #     0.7453559924999299,
     #     0.9428090415820635,
@@ -2978,8 +3325,8 @@ if __name__ == "__main__":
     # )
 
     # spatial_search_subspace_2(
-    #     spins=20,
-    #     marked_strength=0.1074997587355275,
+    #     spins=6,
+    #     marked_strength=0.2,
     #     period=1,
     #     time=15,
     #     dt=0.1,
@@ -2987,6 +3334,129 @@ if __name__ == "__main__":
     #     open_chain=True,
     # )
 
-    n_spins_hubbard_model(
-        spins=3, excitations=2, edges=[[0, 1], [1, 2]], time=5, dt=0.01
+    # spatial_search_subspace_2_test(
+    #     spins=6,
+    #     marked_strength=0.2,
+    #     period=1,
+    #     time=15,
+    #     dt=0.1,
+    #     alpha=0.5,
+    #     open_chain=True,
+    #     subspace=2,
+    # )
+
+    # n_spins_hubbard_model()
+    # two_sites_two_spins_hubbard_model(
+    #     js=1,
+    #     us=[20, 20],
+    #     es=[0, 20],
+    #     vs=[0, 0],
+    #     dt=0.01,
+    #     time=3,
+    #     only_target_state=False,
+    #     open_chain=True,
+    # )
+
+    # two_sites_two_spins_hubbard_model(
+    #     js=1,
+    #     us=[20, 20],
+    #     es=[0, 10],
+    #     vs=[10, 10],
+    #     dt=0.01,
+    #     time=3,
+    #     only_target_state=False,
+    #     open_chain=True,
+    # )
+    # two_sites_two_spins_hubbard_model_noise(
+    #     js=1,
+    #     us=[20, 20],
+    #     es=[0, 20],
+    #     vs=[0, 0],
+    #     dt=0.01,
+    #     time=3,
+    #     only_target_state=False,
+    #     open_chain=True,
+    # )
+
+    two_sites_two_spins_hubbard_model_noise(
+        js=1,
+        us=[20, 20],
+        es=[0, 10],
+        vs=[10, 10],
+        dt=0.01,
+        time=2.65,
+        only_target_state=False,
+        open_chain=True,
+        noise=0,
+        samples=1,
+        plot_title=True,
+        plot_label="(b)",
+        plot_legend=True,
     )
+
+    # noises = [0.01 * i for i in range(0, 51)]
+    # two_sites_two_spins_hubbard_model_noises(
+    #     js=1,
+    #     us=[20, 20],
+    #     es=[0, 10],
+    #     vs=[10, 10],
+    #     dt=0.01,
+    #     time=3,
+    #     only_target_state=False,
+    #     open_chain=True,
+    #     noises=noises,
+    #     samples=1,
+    # )
+
+    # n_spins_hubbard_model()
+    # basic_two_spins_hubbard_model(
+    #     spins=3,
+    #     j=1,
+    #     u=20,
+    #     e=[10, 0, 10],
+    #     v=10,
+    #     use_js_engineered=False,
+    #     use_es_engineered=False,
+    #     use_us_engineered=False,
+    #     use_vs_engineered=False,
+    #     dt=0.01,
+    #     time=5,
+    #     only_target_state=True,
+    #     open_chain=True,
+    # )
+
+    # end_to_end_two_spins_hubbard_model(
+    #     spins=12,
+    #     time=15,
+    #     dt=0.01,
+    #     j=1,
+    #     j_noise=0,
+    #     u=1,
+    #     v=0,
+    #     e=-1,
+    #     open_chain=True,
+    #     use_js_engineered=True,
+    #     use_us_engineered=False,
+    #     use_vs_engineered=False,
+    #     use_es_engineered=True,
+    #     only_target_state=True,
+    # )
+    # quantum_state_transfer_engineered_chain_2(j_noise=0)
+
+    # end_to_end_two_spins_hubbard_model_2(
+    #     spins=12,
+    #     time=1000000,
+    #     dt=1,
+    #     j=1,
+    #     j_noise=0,
+    #     u=20,
+    #     v=0,
+    #     e=0,
+    #     open_chain=True,
+    #     use_js_engineered=True,
+    #     use_us_engineered=False,
+    #     use_vs_engineered=False,
+    #     use_es_engineered=False,
+    #     only_target_state=True,
+    # )
+    # testXYchain(spins=4, subspace=1, period=1, time=4.8)

@@ -433,7 +433,7 @@ if __name__ == "__main__":
 
     # spins_list = [x for x in range(4, 124, 4)]
     # spins_list = [x for x in range(12, 40, 4)]
-    spins_list = [x for x in range(4, 52, 2)]
+    spins_list = [x for x in range(6, 52, 2)]
 
     data = main(
         spins_list,

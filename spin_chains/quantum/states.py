@@ -198,21 +198,42 @@ class Ket:
         return state
 
     @staticmethod
-    def n_particle_hubbard_state(spins, excitations, sites=[], state=[]):
-        if state:
-            states = [
-                np.array(state)
-                for state in itertools.product(range(excitations + 1), repeat=spins)
-                if np.sum(state) == excitations
-            ]
-            state = np.array(
-                [1 if state == s else 0 for s in states],
-                dtype=np.complex128,
+    def two_particle_hubbard_state_multi_sites(spins, sites_list):
+        states = []
+        for sites in sites_list:
+            states.append(
+                np.array(
+                    [
+                        1 if i + 1 == sites[0] and j + 1 == sites[1] else 0
+                        for i in range(spins)
+                        for j in range(spins)
+                    ],
+                    dtype=np.complex128,
+                )
             )
-        else:
-            state = np.zeros(spins)
-            for site in sites:
-                state[site - 1] += 1
+        return np.sum(states, axis=0) / np.sqrt(len(sites_list))
+
+    @staticmethod
+    def n_particle_hubbard_state(spins, excitations, sites):
+        state = np.array(
+            [
+                list(s) == sites
+                for s in itertools.product(range(spins), repeat=excitations)
+            ],
+            dtype=np.complex128,
+        )
+        return state
+
+    @staticmethod
+    def n_excitation_state(spins, excitations, sites):
+        state = np.array(
+            [
+                list(s) == sites
+                for s in itertools.product(range(spins), repeat=excitations)
+                if len(s) == len(set(s))
+            ],
+            dtype=np.complex128,
+        )
         return state
 
 
@@ -330,14 +351,19 @@ class RandomState(Ket):
 
 
 class TwoParticleHubbbardState(Ket):
-    def __init__(self, spins, sites=[1, 1], state_array=False):
+    def __init__(self, spins, sites=[1, 1], state_array=False, multi_sites=False):
         super().__init__(spins)
         self.subspace = 2
         self.subspace_only = True
         if state_array:
             self.subspace_ket = np.array(state_array, dtype=np.complex128)
         else:
-            self.subspace_ket = Ket.two_particle_hubbard_state(self.spins, sites)
+            if multi_sites:
+                self.subspace_ket = Ket.two_particle_hubbard_state_multi_sites(
+                    self.spins, sites
+                )
+            else:
+                self.subspace_ket = Ket.two_particle_hubbard_state(self.spins, sites)
 
     def state_labels_subspace(self):
         spin_locations = [
@@ -353,24 +379,43 @@ class TwoParticleHubbbardState(Ket):
 
 
 class NParticleHubbbardState(Ket):
-    def __init__(self, spins, excitations, state, state_array=False):
+    def __init__(self, spins, sites=[1, 1], state_array=False):
         super().__init__(spins)
-        self.subspace = 2
+        self.subspace = len(sites)
         self.subspace_only = True
-        self.excitations = excitations
+        self.excitations = self.subspace
         if state_array:
             self.subspace_ket = np.array(state_array, dtype=np.complex128)
         else:
             self.subspace_ket = Ket.n_particle_hubbard_state(
-                self.spins, self.excitations, state
+                self.spins, self.excitations, sites=sites
             )
 
     def state_labels_subspace(self):
         states = [
-            "".join([str(i) for i in state])
-            for state in itertools.product(
-                range(self.excitations + 1), repeat=self.spins
+            list(s)
+            for s in itertools.product(range(self.spins), repeat=self.excitations)
+        ]
+        return states
+
+
+class NExcitationState(Ket):
+    def __init__(self, spins, sites=[1, 1], state_array=False):
+        super().__init__(spins)
+        self.subspace = len(sites)
+        self.subspace_only = True
+        self.excitations = self.subspace
+        if isinstance(state_array, (list, np.ndarray)):
+            self.subspace_ket = np.array(state_array, dtype=np.complex128)
+        else:
+            self.subspace_ket = Ket.n_excitation_state(
+                self.spins, self.excitations, sites=sites
             )
-            if np.sum(state) == self.excitations
+
+    def state_labels_subspace(self):
+        states = [
+            list(s)
+            for s in itertools.product(range(self.spins), repeat=self.excitations)
+            if len(s) == len(set(s))
         ]
         return states

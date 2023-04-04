@@ -315,7 +315,7 @@ def approximate_gamma(spins, open_chain, alpha, dt=0.01):
 
 
 if __name__ == "__main__":
-    alpha = 0.3
+    alpha = 0.6
     protocol = "always_on_fast"
     chain = "open"
     mid_n = False
@@ -331,7 +331,7 @@ if __name__ == "__main__":
     always_on = True if protocol == "always_on_fast" else False
     open_chain = True if chain == "open" else False
 
-    spins_list = [x for x in range(4, 22, 2)]
+    spins_list = [x for x in range(4, 16, 2)]
     data = main(
         spins_list,
         alpha,

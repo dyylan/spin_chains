@@ -6,7 +6,7 @@ import scipy.linalg
 import scipy.special
 import scipy.constants
 
-from .iontrap import IonTrap
+from .iontrap import IonTrap, IonTrapXY
 
 
 class Hamiltonian:
@@ -32,6 +32,21 @@ class Hamiltonian:
                 self.U = Hamiltonian.U_matrix(self.H_subspace, self.dt)
             else:
                 self.U = Hamiltonian.U_matrix(self.H, self.dt)
+
+    def freeze_interactions(self, subspace_evolution=False):
+        self.H_freeze = np.copy(self.H)
+        self.H = np.zeros(self.H.shape)
+        if subspace_evolution:
+            self.H_subspace_freeze = np.copy(self.H_subspace)
+            self.H_subspace = np.zeros(self.H_subspace_freeze.shape)
+        self.initialise_evolution(subspace_evolution=subspace_evolution)
+
+    def unfreeze_interactions(self, subspace_evolution=False):
+        # self.H_freeze = np.copy(self.H)
+        self.H = np.copy(self.H_freeze)
+        if subspace_evolution:
+            self.H_subspace = np.copy(self.H_subspace_freeze)
+        self.initialise_evolution(subspace_evolution=subspace_evolution)
 
     def add_marked_site(self, spin, h=1, field="z", gamma_rescale=False):
         site = self.spins - spin
@@ -293,7 +308,18 @@ class XYHamiltonian1dSubspace(Hamiltonian):
 
 
 class HubbardHamiltonian2particles(Hamiltonian):
-    def __init__(self, spins, dt=0.1, js=1, us=1, es=0, vs=0, open_chain=False):
+    def __init__(
+        self,
+        spins,
+        dt=0.1,
+        js=1,
+        us=1,
+        es=0,
+        vs=0,
+        open_chain=False,
+        noise=0,
+        samples=0,
+    ):
         dimensions = spins ** 2
         super().__init__(dimensions, dt)
         self.spins = spins
@@ -302,18 +328,31 @@ class HubbardHamiltonian2particles(Hamiltonian):
         self.es = self._set_interactions_list(es)
         self.vs = self._set_interactions_list(vs)
         self.open_chain = open_chain
+        self.noise = noise
+        self.samples = samples
+        if self.samples:
+            self.noise_arrays = []
+            self.H_noise = []
+            for sample in range(1, self.samples + 1, 1):
+                self.noise_arrays.append(np.random.normal(0, self.noise, self.spins))
+                self.H_noise.append(self.H_matrix(sample))
+            self.H_noise_subspace = self.H_noise
         self.H = self.H_matrix()
         self.H_subspace = self.H
 
-    def H_matrix(self):
+    def H_matrix(self, sample=0):
         if self.open_chain:
 
             def hopping(i, j, a, b):
+                coef = 1
+                if (i + j) > (a + b):
+                    coef *= -1
                 if a == b:
-                    if i - j == 1:
-                        return self.js[j - 1]
-                    if j - i == 1:
-                        return self.js[i - 1]
+                    if abs(i - j) == 1:
+                        return coef * self.js[j]
+                elif i == j:
+                    if abs(a - b) == 1:
+                        return coef * self.js[j]
                 return 0
 
         else:
@@ -321,9 +360,9 @@ class HubbardHamiltonian2particles(Hamiltonian):
             def hopping(i, j, a, b):
                 if a == b:
                     if i - (j % self.spins) == 1:
-                        return self.js[j - 1]
-                    if j - (i % self.spins) == 1:
-                        return self.js[i - 1]
+                        return self.js[j]
+                    elif j - (i % self.spins) == 1:
+                        return self.js[i]
                 return 0
 
         def u_interaction(i, j, a, b, strength):
@@ -332,6 +371,8 @@ class HubbardHamiltonian2particles(Hamiltonian):
 
         def e_onsite_potential(i, j, a, b, strength):
             interaction = strength if (i == a) and (j == b) else 0
+            if sample:
+                interaction += self.noise_arrays[sample - 1][i]
             return interaction
 
         def v_interaction(i, j, a, b, strength, l=1):
@@ -341,8 +382,8 @@ class HubbardHamiltonian2particles(Hamiltonian):
         H = np.array(
             [
                 [
-                    hopping(spin1_row + 1, spin1_col + 1, spin2_row, spin2_col)
-                    + hopping(spin2_row + 1, spin2_col + 1, spin1_row, spin1_col)
+                    hopping(spin1_row, spin1_col, spin2_row, spin2_col)
+                    # + hopping(spin2_row, spin2_col, spin1_row, spin1_col)
                     + u_interaction(
                         spin1_row, spin2_row, spin1_col, spin2_col, self.us[spin1_row]
                     )
@@ -401,12 +442,15 @@ class HubbardHamiltonianNparticles(Hamiltonian):
         es=0,
         vs=0,
     ):
-        dimensions = spins ** 2
+        dimensions = spins ** excitations
         super().__init__(dimensions, dt)
         self.spins = spins
         self.excitations = excitations
         self.edges = edges
-        self.states = self._generate_states()
+        self.reverse_edges = [edge[::-1] for edge in self.edges]
+        self.states = HubbardHamiltonianNparticles.generate_states(
+            self.spins, self.excitations
+        )
         self.js = self._set_couplings(js)
         self.us = self._set_interactions_list(us)
         self.es = self._set_interactions_list(es)
@@ -417,18 +461,21 @@ class HubbardHamiltonianNparticles(Hamiltonian):
 
     def H_matrix(self):
         def u_interaction(state):
-            bunches = state - 1
+            s = HubbardHamiltonianNparticles.sites_to_state_label(self.spins, state)
+            bunches = s - 1
             bunches[bunches < 0] = 0
             energy = [bunch * self.us[i] for i, bunch in enumerate(bunches)]
             return np.sum(energy)
 
         def e_onsite_potential(state):
-            energy = [occupation * self.es[i] for i, occupation in enumerate(state)]
+            s = HubbardHamiltonianNparticles.sites_to_state_label(self.spins, state)
+            energy = [occupation * self.es[i] for i, occupation in enumerate(s)]
             return np.sum(energy)
 
         def v_interaction(state):
+            s = HubbardHamiltonianNparticles.sites_to_state_label(self.spins, state)
             energy = [
-                state[edge[0]] * state[edge[1]] * self.vs[e]
+                s[edge[0]] * s[edge[1]] * self.vs[e]
                 for e, edge in enumerate(self.edges)
             ]
             return np.sum(energy)
@@ -442,20 +489,53 @@ class HubbardHamiltonianNparticles(Hamiltonian):
         return H
 
     def A_matrix(self):
-        a = np.zeros((len(self.states), len(self.states)))
-        for i, state_row in enumerate(self.states):
-            for j, state_col in enumerate(self.states):
-                transition = abs(state_row - state_col)
-                ones = np.where(transition == 1)[0].tolist()
-                for e, edge in self.edges:
-                    if ones == edge:
-                        a[i, j] = self.js[e]
+        # a = np.zeros((len(self.states), len(self.states)))
+        # for i, state_row in enumerate(self.states):
+        #     for j, state_col in enumerate(self.states):
+        #         transition = abs(state_row - state_col)
+        #         ones = np.where(transition == 1)[0].tolist()
+        #         for e, edge in enumerate(self.edges):
+        #             if ones == edge:
+        #                 a[i, j] = self.js[e]
+        a = np.zeros((self.dimensions, self.dimensions))
+        for i, sites_row in enumerate(self.states):
+            for j, sites_col in enumerate(self.states):
+                if sites_row != sites_col:
+                    transition = np.array(sites_row) - np.array(sites_col)
+                    if transition[0] == 0:
+                        edge = (
+                            [sites_row[1], sites_col[1]]
+                            if transition[1] < 0
+                            else [sites_col[1], sites_row[1]]
+                        )
+                        if edge in self.edges:
+                            a[i, j] = self.js[self.edges.index(edge)]
+                    elif transition[1] == 0:
+                        edge = (
+                            [sites_row[0], sites_col[0]]
+                            if transition[0] < 0
+                            else [sites_col[0], sites_row[0]]
+                        )
+                        if edge in self.edges:
+                            a[i, j] = self.js[self.edges.index(edge)]
         return a
 
     def update_js(self, js):
         self.js = self._set_couplings(js)
         self.H = self.H_matrix()
         self.H_subspace = self.H
+
+    @staticmethod
+    def generate_states(spins, excitations):
+        states = [list(s) for s in itertools.product(range(spins), repeat=excitations)]
+        return states
+
+    @staticmethod
+    def sites_to_state_label(spins, sites):
+        state = np.zeros(spins)
+        for site in sites:
+            state[site] += 1
+        return state
 
     def _set_interactions_list(self, u):
         if type(u) is not list:
@@ -480,15 +560,6 @@ class HubbardHamiltonianNparticles(Hamiltonian):
             else:
                 u_list = u
         return u_list
-
-    def _generate_states(self):
-        return [
-            np.array(state)
-            for state in itertools.product(
-                range(self.excitations + 1), repeat=self.spins
-            )
-            if np.sum(state) == self.excitations
-        ]
 
 
 class LongRangeXYHamiltonian(HeisenbergHamiltonian):
@@ -778,7 +849,8 @@ class LongRangeXYHamiltonian1dExp(Hamiltonian):
         self.alpha = self.ion_trap.alpha
 
         self.t2 = t2  # dephasing time
-        self.dephasing_rate = 1 / (2 * np.pi * t2)
+        # self.dephasing_rate = 1 / (2 * np.pi * t2)
+        self.dephasing_rate = 1 / t2
         self.samples = samples
         if self.samples:
             self.noise_arrays = []
@@ -856,76 +928,286 @@ class LongRangeXYHamiltonian1dExp(Hamiltonian):
         self.H = self.H_matrix()
 
 
-class LongRangeXYHamiltonian1dSubspace2(Hamiltonian):
-    def __init__(self, spins, dt=0.1, alpha=1, open_chain=False):
+class LongRangeXYHamiltonian1dExpXY(Hamiltonian):
+    def __init__(
+        self,
+        spins,
+        dt=0.000001,
+        mu=2 * np.pi * 6.01e6,
+        Omega=2 * np.pi * 1e6,
+        delta_k=2 * 2 * np.pi / 355e-9 * np.array([1, 0, 0]),
+        omega=2 * np.pi * np.array([6e6, 5e6, 0.5e6]),
+        use_optimal_omega=False,
+        t2=10e-3,
+        samples=0,
+        single_mode=False,
+        hbar=True,
+    ):
+        super().__init__(spins, dt, hbar)
+        self.spins = spins
+        self.mu = np.ones(1) * mu
+        self.Omega = np.ones((spins, 1)) * Omega
+        self.delta_k = delta_k
+        self.ion_trap = IonTrapXY(
+            spins,
+            mu,
+            omega,
+            Omega,
+            use_optimal_omega=use_optimal_omega,
+            calculate_alpha=True,
+        )
+        self.alpha = self.ion_trap.alpha
+        self.single_mode = single_mode
+        self.t2 = t2  # dephasing time
+        # self.dephasing_rate = 1 / (2 * np.pi * t2)
+        # self.dephasing_rate = 4 / (2 * np.pi * t2)  # 4 is from coupling scaling
+        self.dephasing_rate = 1 / t2
+        # self.dephasing_rate = 4 / t2  # 4 is from comparison with full dynamics
+        self.samples = samples
+        if self.samples:
+            self.noise_arrays = []
+            self.H_noise = []
+            for sample in range(1, self.samples + 1, 1):
+                self.noise_arrays.append(
+                    np.random.normal(0, np.sqrt(self.dephasing_rate), self.spins)
+                )
+                self.H_noise.append(self.H_matrix(sample))
+            self.H_noise_subspace = self.H_noise
+        self.H = self.H_matrix()
+        self.H_subspace = self.H
+
+    def H_matrix(self, sample=0):
+        if self.single_mode:
+            gs, omega_single_mode, omega_eff, delta = self.ion_trap.single_mode_ms()
+            H = 4 * np.array(
+                [
+                    [
+                        gi
+                        * gj
+                        * omega_single_mode
+                        * (1 / (8 * (omega_eff ** 2 - omega_single_mode ** 2)))
+                        if i != j
+                        else 0
+                        for i, gi in enumerate(gs)
+                    ]
+                    for j, gj in enumerate(gs)
+                ]
+            )
+        else:
+            H = 4 * np.copy(
+                self.ion_trap.Js
+            )  # The 4 is to make it comparable with the full dynamics (it could have been put in the Js)
+        if sample:
+            for i in range(self.spins):
+                H[i, i] += self.noise_arrays[sample - 1][i]
+        return H
+
+    def update_H_matrix(self, sample, site, delta):
+        H = np.copy(self.H_noise[sample - 1])
+        H[site, site] += delta
+        return H
+
+    def rescale_hamiltonian(self, scale):
+        self.hamiltonian_scaling = scale
+        self.H = scale * self.H
+        self.H_subspace = self.H
+
+    def add_marked_site(self, spin, hz=1, gamma_rescale=False, rescale_noise=True):
+        site = self.spins - spin
+        if self.samples:
+            if gamma_rescale:
+                for sample in range(self.samples):
+                    self.H_noise[sample] = hz * self.H_noise[sample]
+                    if rescale_noise:
+                        for i in range(self.spins):
+                            self.H_noise[sample][i, i] += (1 - hz) * self.noise_arrays[
+                                sample
+                            ][i]
+                    self.H_noise[sample][(site, site)] = (
+                        self.H_noise[sample][(site, site)] + 1
+                    )
+            else:
+                for sample in range(self.samples):
+                    self.H_noise[sample][(site, site)] = (
+                        self.H_noise[sample][(site, site)] + hz
+                    )
+            self.H_noise_subspace = self.H_noise
+        if gamma_rescale:
+            self.H = hz * self.H
+            self.H[(site, site)] = self.H[(site, site)] + 1
+            # if self.is_interaction_map:
+            #     self.interaction_bound = self._generate_interaction_bound(
+            #         self.interaction_distance_bound, scaling=hz
+            #     )
+        else:
+            self.H[(site, site)] = self.H[(site, site)] + hz
+        self.H_subspace = self.H
+
+    def update_marked_site(self, spin, hz=1, gamma_rescale=False):
+        self.add_marked_site(spin, hz, gamma_rescale)
+
+    def add_broken_spin(self, spin, t2):
+        self.broken_spin_noise_array = []
+        dephasing_rate = 1 / t2
+        H_broken_noise = []
+        for sample in range(1, self.samples + 1, 1):
+            spin_noise = np.random.normal(0, dephasing_rate)
+            self.broken_spin_noise_array.append(spin_noise)
+            H_broken_noise.append(self.update_H_matrix(sample, spin, delta=spin_noise))
+        self.H_noise = H_broken_noise
+        self.H_noise_subspace = self.H_noise
+        self.H = self.H_matrix()
+
+
+# class LongRangeXYHamiltonian1dSubspace2(Hamiltonian):
+#     def __init__(self, spins, dt=0.1, alpha=1, open_chain=False):
+#         dimensions = spins ** 2
+#         super().__init__(dimensions, dt)
+#         self.open_chain = open_chain
+#         self.spins = spins
+#         self.alpha = alpha
+#         self.H = self.H_matrix()
+#         self.H_subspace = self.H
+
+#     def H_matrix(self):
+#         if self.open_chain:
+
+#             def coef(state_1, state_2):
+#                 excitations_1 = [i for i, e in enumerate(state_1) if e == 1]
+#                 excitations_2 = [i for i, e in enumerate(state_2) if e == 1]
+#                 if excitations_1 != excitations_2:
+#                     distances = [
+#                         np.array(excitations_1) - np.array(excitations_2),
+#                         np.array(excitations_1) - np.array(excitations_2[::-1]),
+#                     ]
+#                     for distance in distances:
+#                         if 0 in distance:
+#                             for d in distance:
+#                                 if d != 0:
+#                                     return 1 / ((np.abs(d)) ** (self.alpha))
+#                 return 0
+
+#         else:
+
+#             def coef(state_1, state_2):
+#                 excitations_1 = [i for i, e in enumerate(state_1) if e == 1]
+#                 excitations_2 = [i for i, e in enumerate(state_2) if e == 1]
+#                 spin1_row, spin2_row = excitations_1[0], excitations_1[1]
+#                 spin1_col, spin2_col = excitations_2[0], excitations_2[1]
+#                 if spin2_row == spin2_col:
+#                     if spin1_row != spin1_col:
+#                         c = 1 / (
+#                             (np.abs(spin1_col - spin1_row)) ** (self.alpha)
+#                         ) + 1 / (
+#                             (np.abs(self.spins - np.abs(spin1_col - spin1_row)))
+#                             ** (self.alpha)
+#                         )
+#                     else:
+#                         c = 0
+#                 elif spin1_row == spin2_col:
+#                     if spin2_row != spin1_col:
+#                         c = 1 / (
+#                             (np.abs(spin2_row - spin1_col)) ** (self.alpha)
+#                         ) + 1 / (
+#                             (np.abs(self.spins - np.abs(spin2_row - spin1_col)))
+#                             ** (self.alpha)
+#                         )
+#                     else:
+#                         c = 0
+#                 else:
+#                     c = 0
+#                 return c
+
+#         states = list(itertools.product(range(2), repeat=self.spins))
+#         excitations = np.sum(states, axis=1)
+#         H = np.array(
+#             [
+#                 [
+#                     coef(state_1, state_2)  # + coef(state_2, state_1)
+#                     for e, state_1 in enumerate(states)
+#                     if excitations[e] == 2
+#                 ]
+#                 for e, state_2 in enumerate(states)
+#                 if excitations[e] == 2
+#             ]
+#         )
+#         return H
+
+#     def add_marked_site(self, spin, hz, gamma_rescale=False):
+#         site = self.spins - spin
+
+#         def coef(state_1, state_2):
+#             if state_1 == state_2:
+#                 if state_1[site] == 1:
+#                     if gamma_rescale:
+#                         c = 1
+#                     else:
+#                         c = hz
+#                 else:
+#                     c = 0
+#             else:
+#                 c = 0
+#             return c
+
+#         if gamma_rescale:
+#             self.H = hz * self.H
+#         states = list(itertools.product(range(2), repeat=self.spins))
+#         excitations = np.sum(
+#             list(itertools.product(range(2), repeat=self.spins)), axis=1
+#         )
+#         H_marked = np.array(
+#             [
+#                 [
+#                     coef(state_1, state_2)
+#                     for e, state_1 in enumerate(states)
+#                     if excitations[e] == 2
+#                 ]
+#                 for e, state_2 in enumerate(states)
+#                 if excitations[e] == 2
+#             ]
+#         )
+#         self.H += H_marked
+#         self.H_subspace = self.H
+
+
+class LongRangeXYHamiltonian1dSubspace(Hamiltonian):
+    def __init__(self, spins, excitations, dt=0.1, alpha=1, open_chain=False):
         dimensions = spins ** 2
         super().__init__(dimensions, dt)
         self.open_chain = open_chain
         self.spins = spins
+        self.excitations = excitations
         self.alpha = alpha
+        self.states = LongRangeXYHamiltonian1dSubspace.generate_states(
+            spins, excitations
+        )
         self.H = self.H_matrix()
         self.H_subspace = self.H
 
     def H_matrix(self):
-        if self.open_chain:
+        def coef(d):
+            c = 1 / ((np.abs(d)) ** (self.alpha))
+            if self.open_chain:
+                c += 1 / ((np.abs(self.spins - np.abs(d))) ** (self.alpha))
+            return c
 
-            def coef(state_1, state_2):
-                excitations_1 = [i for i, e in enumerate(state_1) if e == 1]
-                excitations_2 = [i for i, e in enumerate(state_2) if e == 1]
-                if excitations_1 != excitations_2:
-                    distances = [
-                        np.array(excitations_1) - np.array(excitations_2),
-                        np.array(excitations_1) - np.array(excitations_2[::-1]),
-                    ]
-                    for distance in distances:
-                        if 0 in distance:
-                            for d in distance:
-                                if d != 0:
-                                    return 1 / ((np.abs(d)) ** (self.alpha))
-                return 0
+        def interaction(state_1, state_2):
+            state_diff = np.array(state_2) - np.array(state_1)
+            if state_diff.tolist().count(0) == self.excitations - 1:
+                for d in state_diff:
+                    if d:
+                        c = coef(d)
+            else:
+                c = 0
+            return c
 
-        else:
-
-            def coef(state_1, state_2):
-                excitations_1 = [i for i, e in enumerate(state_1) if e == 1]
-                excitations_2 = [i for i, e in enumerate(state_2) if e == 1]
-                spin1_row, spin2_row = excitations_1[0], excitations_1[1]
-                spin1_col, spin2_col = excitations_2[0], excitations_2[1]
-                if spin2_row == spin2_col:
-                    if spin1_row != spin1_col:
-                        c = 1 / (
-                            (np.abs(spin1_col - spin1_row)) ** (self.alpha)
-                        ) + 1 / (
-                            (np.abs(self.spins - np.abs(spin1_col - spin1_row)))
-                            ** (self.alpha)
-                        )
-                    else:
-                        c = 0
-                elif spin1_row == spin2_col:
-                    if spin2_row != spin1_col:
-                        c = 1 / (
-                            (np.abs(spin2_row - spin1_col)) ** (self.alpha)
-                        ) + 1 / (
-                            (np.abs(self.spins - np.abs(spin2_row - spin1_col)))
-                            ** (self.alpha)
-                        )
-                    else:
-                        c = 0
-                else:
-                    c = 0
-                return c
-
-        states = list(itertools.product(range(2), repeat=self.spins))
-        excitations = np.sum(states, axis=1)
         H = np.array(
             [
                 [
-                    coef(state_1, state_2)  # + coef(state_2, state_1)
-                    for e, state_1 in enumerate(states)
-                    if excitations[e] == 2
+                    interaction(state_1, state_2)  # + coef(state_2, state_1)
+                    for state_1 in self.states
                 ]
-                for e, state_2 in enumerate(states)
-                if excitations[e] == 2
+                for state_2 in self.states
             ]
         )
         return H
@@ -935,7 +1217,7 @@ class LongRangeXYHamiltonian1dSubspace2(Hamiltonian):
 
         def coef(state_1, state_2):
             if state_1 == state_2:
-                if state_1[site] == 1:
+                if site in state_1:
                     if gamma_rescale:
                         c = 1
                     else:
@@ -948,20 +1230,20 @@ class LongRangeXYHamiltonian1dSubspace2(Hamiltonian):
 
         if gamma_rescale:
             self.H = hz * self.H
-        states = list(itertools.product(range(2), repeat=self.spins))
-        excitations = np.sum(
-            list(itertools.product(range(2), repeat=self.spins)), axis=1
-        )
         H_marked = np.array(
             [
-                [
-                    coef(state_1, state_2)
-                    for e, state_1 in enumerate(states)
-                    if excitations[e] == 2
-                ]
-                for e, state_2 in enumerate(states)
-                if excitations[e] == 2
+                [coef(state_1, state_2) for state_1 in self.states]
+                for state_2 in self.states
             ]
         )
         self.H += H_marked
         self.H_subspace = self.H
+
+    @staticmethod
+    def generate_states(spins, excitations):
+        states = [
+            list(s)
+            for s in itertools.product(range(spins), repeat=excitations)
+            if len(s) == len(set(s))
+        ]
+        return states

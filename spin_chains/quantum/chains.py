@@ -10,7 +10,8 @@ from .hamiltonians import (
     HubbardHamiltonianNparticles,
     LongRangeXYHamiltonian1d,
     LongRangeXYHamiltonian1dExp,
-    LongRangeXYHamiltonian1dSubspace2,
+    LongRangeXYHamiltonian1dExpXY,
+    LongRangeXYHamiltonian1dSubspace,
 )
 from .states import FourierState
 
@@ -23,6 +24,12 @@ class Chain:
         self.states = []
         self.times = []
         self.time = 0
+
+    def freeze_interactions(self):
+        self.hamiltonian.freeze_interactions(self.subspace_evolution)
+
+    def unfreeze_interactions(self):
+        self.hamiltonian.unfreeze_interactions(self.subspace_evolution)
 
     def add_marked_site(self, spin, h=1, field="z", gamma_rescale=False):
         if self.initialised:
@@ -142,6 +149,8 @@ class Chain:
             mean_overlaps = Chain._square_norm(mean_overlaps)
             if std_dev:
                 std_dev_overlaps = Chain._square_norm(std_dev_overlaps)
+        else:
+            mean_overlaps = Chain._square_norm(mean_overlaps, l=1)
         if std_dev:
             return mean_overlaps, std_dev_overlaps
         else:
@@ -154,8 +163,12 @@ class Chain:
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def _square_norm(overlaps):
-        return np.abs(np.multiply(np.conj(overlaps), overlaps))
+    def _square_norm(overlaps, l=2):
+        if l == 2:
+            norm = np.abs(np.multiply(np.conj(overlaps), overlaps))
+        elif l == 1:
+            norm = np.abs(overlaps)
+        return norm
 
 
 class Chain1d(Chain):
@@ -256,10 +269,21 @@ class Chain1dSubspace(Chain):
 
 
 class Chain1dSubspace2particles(Chain1dSubspace):
-    def __init__(self, spins, dt=0.1, js=1, us=1, es=0, vs=0, open_chain=False):
+    def __init__(
+        self,
+        spins,
+        dt=0.1,
+        js=1,
+        us=1,
+        es=0,
+        vs=0,
+        open_chain=False,
+        noise=0,
+        samples=0,
+    ):
         super().__init__(spins)
         self.hamiltonian = HubbardHamiltonian2particles(
-            spins, dt, js, us, es, vs, open_chain
+            spins, dt, js, us, es, vs, open_chain, noise, samples
         )
 
     def add_marked_site(self, spin, h=1, gamma_rescale=False):
@@ -363,11 +387,47 @@ class Chain1dSubspaceLongRangeExp(Chain1dSubspace):
         )
 
 
-class Chain1dSubspace2LongRange(Chain1dSubspace):
+class Chain1dSubspaceLongRangeExpXY(Chain1dSubspace):
     def __init__(
-        self, spins, dt=0.1, alpha=1, open_chain=False, sender_reciever_qubits=False
+        self,
+        spins,
+        dt=0.000001,
+        mu=2 * np.pi * 6.01e6,
+        Omega=2 * np.pi * 1e6,
+        delta_k=2 * 2 * np.pi / 355e-9 * np.array([1, 0, 0]),
+        omega=2 * np.pi * np.array([6e6, 5e6, 1e6]),
+        use_optimal_omega=False,
+        t2=10e-3,
+        samples=0,
+        single_mode=False,
+        hbar=False,
     ):
         super().__init__(spins)
-        self.hamiltonian = LongRangeXYHamiltonian1dSubspace2(
-            spins, dt, alpha, open_chain
+        self.hamiltonian = LongRangeXYHamiltonian1dExpXY(
+            spins,
+            dt=dt,
+            mu=mu,
+            Omega=Omega,
+            delta_k=delta_k,
+            omega=omega,
+            use_optimal_omega=use_optimal_omega,
+            t2=t2,
+            samples=samples,
+            single_mode=single_mode,
+            hbar=hbar,
+        )
+
+
+class Chain1dSubspaceNLongRange(Chain1dSubspace):
+    def __init__(
+        self,
+        spins,
+        excitations,
+        dt=0.1,
+        alpha=1,
+        open_chain=False,
+    ):
+        super().__init__(spins)
+        self.hamiltonian = LongRangeXYHamiltonian1dSubspace(
+            spins, excitations, dt, alpha, open_chain
         )
